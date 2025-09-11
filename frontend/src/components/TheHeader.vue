@@ -60,9 +60,7 @@ export default {
       posts: [],
       openAddImagePost: false,
       openAddTextPost: false,
-      username: "",
       profilePicture: "",
-      id: "",
     };
   },
   computed: {

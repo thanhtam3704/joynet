@@ -8,7 +8,9 @@
       <div class="profile__container">
         <ProfileDetail :id="id" />
       </div>
-      <div class="profile__right-sidebar"></div>
+      <div class="profile__right-sidebar">
+        <SidebarRight :currentUser="currentUser" />
+      </div>
     </div>
     <TheFooter />
   </div>

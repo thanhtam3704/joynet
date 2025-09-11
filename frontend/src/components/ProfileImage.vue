@@ -43,8 +43,9 @@ export default {
 
 <style scoped>
 .image-post__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 35%;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 </style>

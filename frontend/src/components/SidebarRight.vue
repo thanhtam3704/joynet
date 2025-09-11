@@ -82,6 +82,9 @@ export default {
   z-index: 1;
   top: 0;
   overflow-x: hidden;
+  /* //ẩn cuộn */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE & Edge */
 }
 .friends {
   padding: 1rem;

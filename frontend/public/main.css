@@ -38,11 +38,11 @@ html {
 body {
   font-size: 1rem;
   font-weight: normal;
-  font-family: "Roboto", sans-serif;
+  font-family: "Open Sans", sans-serif;
   background: rgb(255, 233, 233);
   background: linear-gradient(
     0deg,
-    rgba(255, 233, 233, 1) 12%,
+    rgba(255, 233, 233, 1) 10%,
     rgba(255, 250, 249, 1) 100%
   );
   background-repeat: no-repeat;
@@ -96,4 +96,10 @@ label {
   color: var(--white);
   font-weight: bold;
   font-size: 1rem;
+}
+.image-post__img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
 }
