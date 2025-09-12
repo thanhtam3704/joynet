@@ -70,8 +70,6 @@ export default {
 
 <style scoped>
 .right-sidebar {
-  background-color: var(--light);
-  border-radius: 2rem;
   display: flex;
   flex-direction: row;
   width: 17%;
@@ -87,11 +85,14 @@ export default {
   -ms-overflow-style: none; /* IE & Edge */
 }
 .friends {
-  padding: 1rem;
-  margin-top: 1rem;
+  /* padding: 1rem;
+  margin-top: 1rem; */
 }
 
 .friends-title {
+  padding-top: 1rem;
+  font-weight: bold;
+  color: #818588;
   margin-bottom: 1rem;
 }
 

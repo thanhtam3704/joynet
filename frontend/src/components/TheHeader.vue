@@ -23,10 +23,12 @@
         </div>
       </div>
       <div class="header__user">
-        <!--<label class="header__user-username"
-          >Xin chào, {{ user.displayName }}</label
-        >-->
-        <img
+        <!-- <label class="header__user-username"
+          > {{ user.displayName }}</label
+        >     -->
+    <a-dropdown>
+    <a class="ant-dropdown-link" @click.prevent>
+      <img
           v-if="user.profilePicture"
           class="image-post__img"
           :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
@@ -36,7 +38,31 @@
           class="image-post__img"
           src="../assets/defaultProfile.png"
         />
-        <button @click="logout" class="btn btn-logout">Đăng xuất</button>
+      <DownOutlined />
+    </a>
+    <template #overlay>
+      <a-menu>
+        <router-link
+          v-if="currentUser"
+          :to="{
+            name: 'Profile',
+            params: {
+              id: currentUser,
+            },
+          }"
+        >
+        <a-menu-item class ="menu-item">
+          <a  href="javascript:;">Trang cá nhân</a>
+        </a-menu-item>
+         </router-link>
+        <a-menu-item>
+          <a @click="logout" href="javascript:;">Đăng xuất</a>
+        </a-menu-item>
+        
+      </a-menu>
+    </template>
+  </a-dropdown>
+        
       </div>
     </div>
 
@@ -88,9 +114,10 @@ export default {
   padding: 0.5rem 1.5rem;
   position: fixed;
   z-index: 9999;
-  width: 95%;
-  height: 65px;
-  background-color: #fffaf9;
+  width: 100%;
+  height: 58px;
+  background-color: #FFFFFF;
+  border-bottom: 1px solid #ddd;
 }
 
 .header__left {
@@ -109,7 +136,7 @@ export default {
 .header__left p {
   font-family: "Montserrat", "Segoe UI", "Arial", "Helvetica Neue", sans-serif;
   font-weight: 900;
-  font-size: 1.5rem;
+  font-size: 1.5em;
   background: linear-gradient(90deg, #fe7b77 0%, #fea94f 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -124,7 +151,7 @@ export default {
 }
 
 .header__main {
-  width: 60%;
+  width: 54%;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -136,10 +163,11 @@ export default {
   justify-content: center;
   position: relative;
   margin-top: 0.7rem;
+
 }
 
 .header__main-right-search {
-  background-color: white;
+  background-color: #F0F2F5;
   margin-right: 1rem;
   display: flex;
   align-items: center;
@@ -149,6 +177,8 @@ export default {
 }
 
 .header__main-right input {
+  background-color: #F0F2F5;
+  width: 250px;
   height: 30px;
   border-radius: 5px;
   padding-left: 5px;
@@ -162,7 +192,7 @@ export default {
 .header__main-right button {
   width: 120px;
   font-weight: 600;
-  font-size: 0.75em;
+  font-size: 0.9em;
 }
 
 .header__user {
@@ -170,6 +200,7 @@ export default {
   align-items: center;
   justify-content: flex-end;
   width: 20%;
+  margin-right: 2em;
 }
 
 .header__user-username {
@@ -191,15 +222,20 @@ export default {
 .btn-imageadd {
   transform: translate(0, 3px);
   transition: 0.4s;
-  background-color: var(--purple);
+  background-color: #FBDFDA;
   margin-top: 0.7rem;
+  color: black;
+  
 }
 
 .btn-imageadd:hover {
-  background-color: #5863c8;
+  background-color: #FBDFDA;
   transition: 0.4s;
   box-shadow: 0px 15px 15px -5px rgba(0, 0, 0, 0.2);
   transform: translate(0, -3px);
+  color: black;
+  
+  
 }
 
 .btn-logout {
@@ -222,5 +258,13 @@ export default {
   width: 40px;
   height: 40px;
   border-radius: 100%;
+}
+
+:deep(.ant-menu-item) {
+  background-color: #FBDFDA !important;
+  border-radius: 6px;
+}
+:deep(.ant-menu-item:hover) {
+  background-color: #f7bfb9 !important;
 }
 </style>

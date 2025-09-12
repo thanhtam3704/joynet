@@ -63,8 +63,7 @@ export default {
 
 <style scoped>
 .left-sidebar {
-  background-color: white;
-  border-radius: 2rem;
+  
   display: flex;
   flex-direction: row;
   width: 16%;
@@ -81,19 +80,21 @@ export default {
 .left-sidebar__menu {
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  padding: 1rem 1rem 0rem 1rem;
+  /*    top   right  bottom  left */
   width: 100%;
 }
 
 .left-sidebar__menu h4 {
   margin-left: 0.5rem;
-  margin-top: 0.5rem;
+  font-weight: bold;
+  color: #818588;
 }
 
 .left-sidebar__nav {
   display: flex;
   flex-direction: column;
-  margin-top: 2rem;
+  margin-top: 1rem;
 }
 
 .on-page {
@@ -132,6 +133,7 @@ export default {
 
 .nav-icon {
   margin-left: 1rem;
+  font-weight:bold;
 }
 
 .nav-icon-not {
