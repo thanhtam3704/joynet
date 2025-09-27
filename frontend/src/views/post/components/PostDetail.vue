@@ -33,7 +33,7 @@
         height="300"
       />
       <div class="main-post" v-else>
-        <ProfileImage :id="posts.userId" class="comment-avatar" />
+        <ProfileImage :id="posts.userId"  />
 
         <div class="post__user-content">
           <PostDisplayName :id="posts.userId" />
@@ -47,19 +47,27 @@
           />
         </div>
       </div>
-
-      <!-- Action Bar - Thanh Thích/Bình luận -->
-      <div class="post-actions">
-        <button class="action-btn like-btn" @click="toggleLike">
-          <span class="action-icon">👍</span>
-          <span :class="{ liked: isLiked }">Thích</span>
-        </button>
-
-        <button class="action-btn comment-btn" @click="focusCommentInput">
-          <span class="action-icon">💬</span>
-          <span>Bình luận</span>
-        </button>
+      <div class="post-stats">
+        <HoverUserList :post-id="id" type="likes" :refresh-key="likesCount" container-selector=".post-detail">
+          <div class="stats-likes" aria-label="Lượt thích">
+            <span class="stats-like-icon">👍</span>
+            <span class="stats-likes-number">{{ formatCompact(likesCount) }}</span>
+          </div>
+        </HoverUserList>
+        <HoverUserList :post-id="id" type="comments" :refresh-key="comments.length" container-selector=".post-detail">
+          <div class="stats-comments" @click="scrollToComments" aria-label="Đi tới bình luận">
+            {{ comments.length }} bình luận
+          </div>
+        </HoverUserList>
       </div>
+      <!-- Action Bar - Like & Comment (reusable) -->
+      <LikeActionBar
+        :post-id="id"
+        :initial-liked="isLiked"
+        :initial-likes-count="likesCount"
+        @comment="focusCommentInput"
+        @updated="({ isLiked: l, likesCount: c }) => { isLiked = l; likesCount = c; }"
+      />
 
       <!-- Comments Section -->
       <div class="comments-section">
@@ -188,14 +196,15 @@
 <script>
 import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
+import LikeActionBar from "@/components/LikeActionBar.vue";
 import SyncLoader from "vue-spinner/src/SyncLoader.vue";
 import { Skeletor } from "vue-skeletor";
 import { createToast } from "mosha-vue-toastify";
-
+import HoverUserList from '@/components/HoverUserList';
 export default {
   name: "PostDetail",
   props: ["id"],
-  components: { ProfileImage, SyncLoader, Skeletor, PostDisplayName },
+  components: { ProfileImage, SyncLoader, Skeletor, PostDisplayName, LikeActionBar, HoverUserList },
   data() {
     return {
       posts: [],
@@ -208,16 +217,18 @@ export default {
       isSkeletorLoading: false,
       color: "pink",
       isLiked: false,
+      likesCount: 0,
+      likeLoading: false,
       showAllComments: false,
     };
   },
   async created() {
     console.log("PostDetail created with ID:", this.id);
     try {
-      this.$store.dispatch("fetchUser");
+  this.$store.dispatch("loadUser");
       this.user = this.$store.state.user;
 
-      // Không gọi fetchPostData ở đây vì đã có trong watch
+  // Không gọi loadPostData ở đây vì đã có trong watch
     } catch (error) {
       console.error("Error in created hook:", error);
     }
@@ -228,62 +239,67 @@ export default {
       handler(newId) {
         console.log("ID changed to:", newId);
         if (newId) {
-          this.fetchPostData();
+          this.loadPostData();
         }
       },
     },
   },
   methods: {
-    async fetchPostData() {
+  async loadPostData() {
       this.isSkeletorLoading = true;
-      console.log("Fetching post data for ID:", this.id);
+  console.log("Loading post data for ID:", this.id);
 
-      try {
-        const responsePost = await fetch(
-          `http://localhost:3000/api/posts/${this.id}`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-          }
-        );
+    try {
+  const { getPost, getPostComments, getLikeStatus, getLikesCount } = await import('@/api/posts');
 
-        if (responsePost.ok) {
-          this.posts = await responsePost.json();
+        const responsePost = await getPost(this.id);
+        if (responsePost.status === 200) {
+          this.posts = responsePost.data;
           console.log("Post data loaded:", this.posts);
+          // Khởi tạo trạng thái like từ API chuyên biệt (ổn định hơn)
+          const currentUserId = this.$store?.state?.user?._id;
+          if (currentUserId) {
+            try {
+              const likeStatus = await getLikeStatus(this.id, currentUserId);
+              if (likeStatus.status === 200) {
+                this.isLiked = !!likeStatus.data?.isLiked;
+                this.likesCount = likeStatus.data?.likesCount ?? (this.posts?.likesCount || 0);
+              }
+            } catch (e) {
+              // Fallback nếu API phụ lỗi
+              this.likesCount = this.posts?.likesCount || 0;
+              this.isLiked = Array.isArray(this.posts?.likes)
+                ? this.posts.likes.includes(currentUserId)
+                : false;
+            }
+          } else {
+            try {
+              const lc = await getLikesCount(this.id);
+              this.likesCount = lc.status === 200 && typeof lc.data?.likesCount === 'number'
+                ? lc.data.likesCount
+                : (this.posts?.likesCount || 0);
+            } catch (_) {
+              this.likesCount = this.posts?.likesCount || 0;
+            }
+          }
         } else {
           console.error("Failed to load post:", responsePost.status);
         }
 
-        const responseComment = await fetch(
-          `http://localhost:3000/api/posts/${this.id}/comments`,
-          {
-            method: "GET",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-          }
-        );
-
-        if (responseComment.ok) {
-          this.comments = await responseComment.json();
+        const responseComment = await getPostComments(this.id);
+        if (responseComment.status === 200) {
+          this.comments = responseComment.data;
           console.log("Comments loaded:", this.comments.length);
         } else {
           console.error("Failed to load comments:", responseComment.status);
         }
       } catch (error) {
-        console.error("Fetch post detail error:", error);
+  console.error("Load post detail error:", error);
       }
 
       this.isSkeletorLoading = false;
     },
-    toggleLike() {
-      this.isLiked = !this.isLiked;
-      // TODO: Gọi API để like/unlike post
-    },
+    // toggleLike logic moved into LikeActionBar component
 
     focusCommentInput() {
       this.$refs.commentTextarea.focus();
@@ -308,47 +324,31 @@ export default {
       this.fillError = false;
 
       try {
+        const { uploadPostFile, addComment: apiAddComment } = await import('@/api/posts');
         // Nếu có file, upload file trước
         if (this.file) {
           const formData = new FormData();
           formData.append("file", this.file);
 
-          const uploadResponse = await fetch(
-            "http://localhost:3000/api/posts/upload",
-            {
-              method: "POST",
-              credentials: "include",
-              body: formData,
-            }
-          );
+          const uploadResponse = await uploadPostFile(formData);
 
-          if (!uploadResponse.ok) {
+          if (uploadResponse.status !== 200) {
             throw new Error("File upload failed");
           }
         }
 
         // Thêm comment với text và/hoặc file
-        const response = await fetch(
-          `http://localhost:3000/api/posts/${this.id}/comment`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              comment: this.commentModel.trim() || undefined,
-              userId: this.$store.state.user._id,
-              postId: this.id,
-              displayName: this.user.displayName,
-              file: this.file ? this.file.name : undefined,
-              isTextComment: !this.file, // true nếu chỉ có text, false nếu có file
-            }),
-          }
-        );
+        const response = await apiAddComment(this.id, {
+          comment: this.commentModel.trim() || undefined,
+          userId: this.$store.state.user._id,
+          postId: this.id,
+          displayName: this.user.displayName,
+          file: this.file ? this.file.name : undefined,
+          isTextComment: !this.file,
+        });
 
-        if (response.ok) {
-          const data = await response.json();
+        if (response.status === 200) {
+          const data = response.data;
           this.comments.push(data);
 
           // Reset form
@@ -371,6 +371,19 @@ export default {
 
       this.isLoading = false;
     },
+    formatCompact(num) {
+      const n = Number(num) || 0;
+      if (n >= 1000000000) return (n / 1000000000).toFixed(n % 1000000000 ? 1 : 0) + 'B';
+      if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'K';
+      return String(n);
+    },
+    scrollToComments() {
+      try {
+        const el = this.$el.querySelector('.comments-section');
+        if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } catch (_) {}
+    },
   },
 };
 </script>
@@ -388,7 +401,7 @@ export default {
   border-bottom: 1px solid #eee;
   z-index: 20;
   padding: 12px 24px 12px 24px;
-  min-height: 30px;
+  min-height: 50px;
   overflow: visible;
   margin-top: 0;
 }
@@ -420,7 +433,7 @@ export default {
 .fb-modal-header__close {
   position: absolute;
   top: 50%;
-  right: 25px;
+  right: 0;
   transform: translateY(-50%);
   background: #e5e7eb;
   border: none;
@@ -476,11 +489,14 @@ export default {
   /* Loại bỏ transform để không ảnh hưởng đến layout */
 }
 
-.timeline__text-post img {
-  width: 54px;
-  height: 54px;
-  border-radius: 35%;
+/* Avatar trong phần main post: dùng cùng style với Timeline (40x40, tròn) */
+.timeline__text-post > :deep(img.image-post__avatar) {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
   margin-right: 1rem;
+  flex-shrink: 0;
 }
 
 .text-post__user-post a {
@@ -516,10 +532,7 @@ export default {
 }
 
 .comments-section {
-  margin-top: 1.5rem;
-  padding-top: 1rem;
   width: 100%;
-  border-top: 1px solid #e0e0e0;
 }
 
 .comments-title {
@@ -696,10 +709,7 @@ export default {
   margin-bottom: 1rem;
 }
 
-.image-post__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 35%;
+.main-post :deep(.image-post__avatar) {
   margin-right: 1rem;
 }
 
@@ -727,8 +737,8 @@ export default {
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 0.75rem 0;
-  margin: 1rem 0;
+  padding: 0.5rem 0;
+  margin: 0.5rem 0;
   border-top: 1px solid #e0e0e0;
   border-bottom: 1px solid #e0e0e0;
 }
@@ -773,6 +783,45 @@ export default {
   margin-top: 2rem; /* Thêm margin để tạo không gian giữa comments và comment box */
 }
 
+.post-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0.25rem;
+  margin: 0.25rem 0 0.5rem 0;
+  color: #65676b;
+}
+
+.stats-likes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-like-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1877f2;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.stats-likes-number {
+  font-weight: 500;
+}
+
+.stats-comments {
+  cursor: pointer;
+}
+
+.stats-comments:hover {
+  text-decoration: underline;
+}
+
 .comment-input-box {
   display: flex;
   align-items: flex-start;
@@ -795,11 +844,14 @@ export default {
   z-index: 10;
 }
 
+/* Avatar trong danh sách comment và ô nhập bình luận */
 .comment-avatar {
   width: 40px;
   height: 40px;
   border-radius: 50%;
   object-fit: cover;
+  flex-shrink: 0;
+  margin-right: 0.75rem;
 }
 
 .comment-input-container {
@@ -951,6 +1003,11 @@ export default {
 .comment-buttons {
   display: flex;
   justify-content: flex-end;
+}
+
+.likes-count {
+  margin-left: 4px;
+  color: #999;
 }
 
 .view-more-btn {

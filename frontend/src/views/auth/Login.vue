@@ -135,32 +135,24 @@ export default {
         this.showEmailError = false;
       }
 
-      try {
-        const response = await fetch("http://localhost:3000/api/auth/login", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-          body: JSON.stringify({
-            email: this.email,
-            password: this.password,
-          }),
-        });
 
-        if (response.ok) {
-          const data = await response.json();
-          this.error = false;
-          localStorage.setItem("token", data.token);
-          this.$router.push("/home");
-        } else {
-          const errorData = await response.json().catch(() => ({}));
-          this.error = errorData.error || "Đăng nhập thất bại";
-          this.password = "";
-        }
+      try {
+        const axios = (await import('@/utils/axios')).default;
+        const response = await axios.post('/auth/login', {
+          email: this.email,
+          password: this.password,
+        }, {
+          withCredentials: true,
+        });
+        this.error = false;
+        localStorage.setItem("token", response.data.token);
+        this.$router.push("/home");
       } catch (error) {
-        console.log("Network error:", error);
-        this.error = "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.";
+        if (error.response && error.response.data && error.response.data.error) {
+          this.error = error.response.data.error;
+        } else {
+          this.error = "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.";
+        }
         this.password = "";
       }
 
@@ -244,7 +236,7 @@ export default {
     &:not(:placeholder-shown) {
       & + .input__label {
         transform: translate(0.25rem, -65%) scale(0.8);
-        color: var(--pink);
+        color: #ff80ab; /* Updated to match our pastel theme */
         background: var(--white);
         padding: 0 0.3em;
         z-index: 2;
@@ -299,7 +291,7 @@ button + button {
 }
 
 .warn {
-  color: var(--red);
+  color: #ff8a80; /* Lighter red to match our pastel theme */
   margin-top: 1rem;
 }
 
@@ -330,8 +322,8 @@ button + button {
 }
 // Hiệu ứng border đỏ khi input lỗi
 .input-error {
-  border-color: var(--red) !important;
-  box-shadow: 0 0 0 2px rgba(254, 123, 119, 0.15);
+  border-color: #ff8a80 !important; /* Lighter red to match our pastel theme */
+  box-shadow: 0 0 0 2px rgba(255, 138, 128, 0.15);
 }
 /* Google Login Styles */
 .divider-row {

@@ -39,11 +39,19 @@
           >
           <span class="nav-icon">Trang cá nhân</span>
         </div>
-        <!-- Messages - chưa có route, tạm thời disable -->
-        <div class="not-on-page disabled">
-          <span class="material-icons w3-xxlarge nav-icon-not">message</span>
-          <span class="nav-icon">Messages</span>
-        </div>
+        <!-- Messages -->
+        <router-link to="/messages">
+          <div v-if="$route.name === 'Messages' || $route.name === 'MessageDetail'" class="on-page">
+            <span class="material-icons w3-xxlarge">message</span>
+            <span class="nav-icon">Tin nhắn</span>
+            <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
+          </div>
+          <div v-else class="not-on-page">
+            <span class="material-icons w3-xxlarge nav-icon-not">message</span>
+            <span class="nav-icon">Tin nhắn</span>
+            <span v-if="unreadCount > 0" class="unread-badge">{{ unreadCount }}</span>
+          </div>
+        </router-link>
         <!-- Settings - chưa có route, tạm thời disable -->
         <div class="not-on-page disabled">
           <span class="material-icons w3-xxlarge nav-icon-not">settings</span>
@@ -58,6 +66,15 @@
 export default {
   name: "SidebarLeft",
   props: ["currentUser"],
+  computed: {
+    unreadCount() {
+      return this.$store.state.unreadCount || 0;
+    }
+  },
+  mounted() {
+    // Load conversations to check for unread messages
+    this.$store.dispatch("loadConversations");
+  }
 };
 </script>
 
@@ -138,5 +155,20 @@ export default {
 
 .nav-icon-not {
   color: rgb(92, 92, 92);
+}
+
+.unread-badge {
+  background-color: #ff3b30;
+  color: white;
+  border-radius: 50%;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  margin-right: 10px;
 }
 </style>

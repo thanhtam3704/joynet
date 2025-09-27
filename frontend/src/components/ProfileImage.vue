@@ -4,7 +4,7 @@
     class="image-post__avatar"
     :src="`http://localhost:3000/uploads/user/${profilePicture}`"
   />
-  <img v-else class="image-post__avatar" src="../assets/defaultProfile.png" />
+  <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" />
 </template>
 
 <script>
@@ -19,23 +19,21 @@ export default {
   },
   async created() {
     try {
-      const responseUser = await fetch(
-        `http://localhost:3000/api/users/${this.id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        }
-      );
-
-      if (responseUser.ok) {
-        this.user = await responseUser.json();
+      const cached = this.$store?.state?.usersById?.[this.id];
+      if (cached) {
+        this.user = cached;
+        this.profilePicture = cached.profilePicture;
+        return;
+      }
+      const axios = (await import('@/utils/axios')).default;
+      const responseUser = await axios.get(`/users/${this.id}`, { withCredentials: true });
+      if (responseUser.status === 200 && responseUser.data) {
+        this.user = responseUser.data;
         this.profilePicture = this.user.profilePicture;
+        this.$store?.commit('CACHE_USER', this.user);
       }
     } catch (error) {
-      console.error("Fetch user profile image error:", error);
+      console.error('Load user profile image error:', error);
     }
   },
 };
@@ -45,7 +43,7 @@ export default {
 .image-post__avatar {
   width: 40px;
   height: 40px;
-  border-radius: 50%;
+  border-radius: 100%;
   object-fit: cover;
 }
 </style>

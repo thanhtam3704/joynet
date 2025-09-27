@@ -20,7 +20,7 @@
 import SidebarLeft from "@/components/SidebarLeft";
 import SidebarRight from "@/components/SidebarRight";
 import TheHeader from "@/components/TheHeader";
-import ProfileDetail from "@/components/ProfileDetail";
+import ProfileDetail from "@/views/profile/components/ProfileDetail.vue";
 import TheFooter from "@/components/TheFooter";
 
 export default {
@@ -64,12 +64,18 @@ export default {
 
 .profile__container {
   border-radius: 2rem;
-  position: sticky;
-  display: flex;
-  flex-direction: row;
+  display: block; /* nội dung tự chảy xuống */
   width: 100%;
-  height: 800px;
-  margin-top: 5rem;
+  max-width: 900px; /* giới hạn bề ngang nội dung trung tâm */
+  margin-top: 5rem; /* tạo khoảng cách dưới header */
+  margin-left: auto;
+  margin-right: auto;
+  padding: 0; /* có thể thêm padding nếu cần */
+}
+
+/* Điều chỉnh grid để cột giữa co theo max-width mà vẫn căn giữa */
+.profile__content {
+  align-items: start;
 }
 
 .profile__right-sidebar {

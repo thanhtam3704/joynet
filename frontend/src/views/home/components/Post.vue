@@ -10,24 +10,24 @@
         <img
           v-else
           class="image-post__img"
-          src="../assets/defaultProfile.png"
+          src="@/assets/defaultProfile.png"
         />
       </div>
       <div class="post-input" @click="toggleAddImagePost">
         <span>Bạn đang nghĩ gì?</span>
       </div>
     </div>
-    <AddImagePost v-if="showAddImagePost" @close="toggleAddImagePost" />
+  <AddPost v-if="showAddImagePost" @close="toggleAddImagePost" />
   </div>
 </template>
 
 <script>
-import AddImagePost from "./AddImagePost.vue";
+import AddPost from "@/components/AddPost.vue";
 
 export default {
   name: "Post",
   components: {
-    AddImagePost,
+  AddPost,
   },
   data() {
     return {

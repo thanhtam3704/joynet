@@ -18,23 +18,21 @@ export default {
   },
   async created() {
     try {
-      const response = await fetch(
-        `http://localhost:3000/api/users/${this.id}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        }
-      );
-
-      if (response.ok) {
-        this.user = await response.json();
+      const cached = this.$store?.state?.usersById?.[this.id];
+      if (cached) {
+        this.user = cached;
+        this.displayName = cached.displayName;
+        return;
+      }
+      const axios = (await import('@/utils/axios')).default;
+      const response = await axios.get(`/users/${this.id}`, { withCredentials: true });
+      if (response.status === 200 && response.data) {
+        this.user = response.data;
         this.displayName = this.user.displayName;
+        this.$store?.commit('CACHE_USER', this.user);
       }
     } catch (error) {
-      console.error("Fetch user error:", error);
+      console.error('Load user error:', error);
     }
   },
 };

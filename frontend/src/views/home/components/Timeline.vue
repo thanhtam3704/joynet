@@ -1,8 +1,6 @@
 <template>
   <div class="timeline">
-    <!-- Các khối Skeletor để hiển thị hiệu    return {
-      isLoading: false,
-      expandedPosts: {},  // Lưu trạng thái hiển thị đầy đủ của các bài postloading -->
+    <!-- Các khối Skeletor để hiển thị hiệu ứng tải -->
     <Skeletor circle size="50" class="skeletor" v-if="isLoading" />
     <Skeletor v-if="isLoading" class="skeletor" width="100%" height="20" />
     <Skeletor v-if="isLoading" class="skeletor" width="100%" height="300" />
@@ -12,13 +10,12 @@
       class="timeline__post"
       v-for="post in posts"
       :key="post._id"
-      v-else
       :data-post-id="post._id"
     >
       <div class="post">
         <!-- ảnh đại diện user -->
         <div class="user-post-img">
-          <ProfileImage :id="post.userId" class="post__img" />
+          <ProfileImage :id="post.userId"  />
         </div>
 
         <!-- Nội dung bài post -->
@@ -55,21 +52,37 @@
         </div>
       </div>
 
-      <!-- Action bar với các nút Thích và Bình luận -->
-      <div class="post-actions">
-        <button class="action-btn like-btn" @click="toggleLike">
-          <span class="action-icon">👍</span>
-          <span :class="{ liked: isLiked }">Thích</span>
-        </button>
-
-        <button
-          class="action-btn comment-btn"
-          @click="$emit('show-post-detail', post._id)"
-        >
-          <span class="action-icon">💬</span>
-          <span>Bình luận</span>
-        </button>
+      <!-- Stats row: likes + comments (Facebook-style) -->
+      <div
+        class="post-stats"
+        v-if="(post.likesCount || 0) > 0 || commentsCountFor(post) > 0"
+      >
+        <HoverUserList :post-id="post._id" type="likes" :refresh-key="post.likesCount || 0">
+          <div class="stats-likes" aria-label="Lượt thích">
+            <span class="stats-like-icon">👍</span>
+            <span class="stats-likes-number">{{ formatCompact(post.likesCount || 0) }}</span>
+          </div>
+        </HoverUserList>
+        <HoverUserList :post-id="post._id" type="comments" :refresh-key="commentsCountFor(post)">
+          <div
+            class="stats-comments"
+            @click="$emit('show-post-detail', post._id)"
+            aria-label="Mở chi tiết bình luận"
+          >
+            {{ commentsCountFor(post) }} bình luận
+          </div>
+        </HoverUserList>
       </div>
+
+      <!-- Action bar reused -->
+      <LikeActionBar
+        :post-id="post._id"
+        :initial-liked="isLikedFor(post)"
+        :initial-likes-count="post.likesCount || 0"
+        :show-comment="true"
+        @comment="$emit('show-post-detail', post._id)"
+        @updated="({ isLiked, likesCount }) => $store.commit('UPDATE_POST_LIKE', { postId: post._id, isLiked, likesCount })"
+      />
     </div>
   </div>
 </template>
@@ -77,21 +90,25 @@
 <script>
 import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
+import LikeActionBar from "@/components/LikeActionBar.vue";
 import { Skeletor } from "vue-skeletor";
+import HoverUserList from '@/components/HoverUserList';
 export default {
   name: "Timeline",
-  components: { ProfileImage, Skeletor, PostDisplayName },
+  components: { ProfileImage, Skeletor, PostDisplayName, LikeActionBar, HoverUserList },
   data() {
     return {
       isLoading: false,
       showPostDetail: false,
       selectedPostId: null,
       expandedPosts: {}, // Lưu trạng thái hiển thị đầy đủ của các bài post
+  likeLoading: {},
+      commentCounts: {}, // Cache đếm bình luận theo postId
     };
   },
   async mounted() {
     this.isLoading = true;
-    await this.$store.dispatch("fetchPosts");
+  await this.$store.dispatch("loadPosts");
     this.isLoading = false;
 
     // Khởi tạo trạng thái mở rộng cho tất cả các bài post
@@ -108,6 +125,13 @@ export default {
         console.error("Error initializing expanded posts:", error);
       }
     }
+
+    // Sau khi có posts, tải số lượng bình luận cho từng post
+    try {
+      await this.loadCommentCountsForPosts();
+    } catch (err) {
+      console.error('Failed to load comment counts:', err);
+    }
   },
   computed: {
     posts() {
@@ -115,6 +139,36 @@ export default {
     },
   },
   methods: {
+    async loadCommentCountsForPosts() {
+      try {
+        const { getPostComments } = await import('@/api/posts');
+        const tasks = (this.posts || []).map(async (p) => {
+          try {
+            const res = await getPostComments(p._id);
+            const arr = Array.isArray(res?.data) ? res.data : (res?.data?.comments || []);
+            this.$set ? this.$set(this.commentCounts, p._id, arr.length) : (this.commentCounts = { ...this.commentCounts, [p._id]: arr.length });
+          } catch (_) {
+            this.$set ? this.$set(this.commentCounts, p._id, p.commentsCount || 0) : (this.commentCounts = { ...this.commentCounts, [p._id]: p.commentsCount || 0 });
+          }
+        });
+        await Promise.all(tasks);
+      } catch (e) {
+        // ignore global failure
+      }
+    },
+    commentsCountFor(post) {
+      if (!post) return 0;
+      const cached = this.commentCounts[post._id];
+      if (typeof cached === 'number') return cached;
+      return post.commentsCount || 0;
+    },
+    formatCompact(num) {
+      const n = Number(num) || 0;
+      if (n >= 1000000000) return (n / 1000000000).toFixed(n % 1000000000 ? 1 : 0) + 'B';
+      if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 ? 1 : 0) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(n % 1000 ? 1 : 0) + 'K';
+      return String(n);
+    },
     isPostTruncated(description) {
       const maxLength = 200; // Giới hạn 200 ký tự
       return description && description.length > maxLength;
@@ -134,8 +188,13 @@ export default {
 
       return truncated + "...";
     },
-    toggleLike() {
-      // Logic for liking a post
+    // like toggle logic moved into LikeActionBar
+    isLikedFor(post) {
+      const currentUserId = this.$store?.state?.user?._id;
+      if (post && Array.isArray(post.likes)) {
+        return post.isLiked || post.likes.includes(currentUserId);
+      }
+      return !!post?.isLiked;
     },
     toggleExpandPost(postId) {
       try {
@@ -245,11 +304,14 @@ export default {
   flex: 1;
   width: calc(100% - 4rem);
   overflow: hidden;
-  margin-right: 4rem;
+  margin-right: 3rem;
+  margin-left: 1rem;
   box-sizing: border-box;
+
 }
 
 .post__user-post a {
+  
   font-weight: bold;
   font-size: 1rem;
 }
@@ -359,10 +421,9 @@ export default {
 }
 
 .image-post__avatar {
-  width: 54px;
-  height: 54px;
-  border-radius: 35%;
-  margin-right: 1rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 100%;
 }
 
 .image-post__user-post img {
@@ -399,8 +460,8 @@ export default {
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 0.75rem 0;
-  margin: 0 1.5rem;
+  padding: 0.5rem 0;
+  margin: 0 1rem;
   border-top: 1px solid #e0e0e0;
   border-bottom: 1px solid #e0e0e0;
 }
@@ -434,6 +495,56 @@ export default {
 .action-btn.liked {
   color: #007bff;
   font-weight: bold;
+}
+
+.likes-count {
+  margin-left: 4px;
+  color: #999;
+}
+
+/* Stats row styles to match PostDetail */
+.post-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 1.5rem;
+  margin: 0.25rem 0 0.5rem 0;
+  color: #65676b;
+}
+
+.stats-likes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-like-icon {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #1877f2;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+}
+
+.stats-likes-number {
+  font-weight: 500;
+}
+
+.stats-comments {
+  cursor: pointer;
+}
+
+.stats-comments:hover {
+  text-decoration: underline;
+}
+
+/* Match liked text color like PostDetail */
+.liked {
+  color: #007bff !important;
 }
 
 /* Tùy chỉnh thanh cuộn */

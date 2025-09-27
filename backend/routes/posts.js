@@ -118,4 +118,124 @@ router.get("/:userId/posts", async (req, res) => {
     return res.status(500).json(err);
   }
 });
+
+// LIKE/UNLIKE POST
+router.put("/:id/like", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    // Kiểm tra xem user đã like chưa
+    const isLiked = post.likes.includes(sanitizedUserId);
+
+    if (isLiked) {
+      // Nếu đã like thì unlike (bỏ thích)
+      post.likes = post.likes.filter((id) => id !== sanitizedUserId);
+      post.likesCount = Math.max(0, post.likesCount - 1);
+      await post.save();
+
+      return res.status(200).json({
+        message: "Đã bỏ thích bài viết",
+        isLiked: false,
+        likesCount: post.likesCount,
+      });
+    } else {
+      // Nếu chưa like thì like (thích)
+      post.likes.push(sanitizedUserId);
+      post.likesCount += 1;
+      await post.save();
+
+      return res.status(200).json({
+        message: "Đã thích bài viết",
+        isLiked: true,
+        likesCount: post.likesCount,
+      });
+    }
+  } catch (err) {
+    console.error("Like/Unlike error:", err);
+    return res.status(500).json({ error: "Lỗi server khi xử lý like" });
+  }
+});
+
+// GET LIKES OF A POST
+router.get("/:id/likes", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    // Lấy thông tin chi tiết của những người đã like
+    const likedUsers = await User.find({ _id: { $in: post.likes } }).select(
+      "_id displayName email"
+    ); // Chỉ lấy thông tin cần thiết
+
+    return res.status(200).json({
+      likesCount: post.likesCount,
+      likedUsers: likedUsers,
+    });
+  } catch (err) {
+    console.error("Get likes error:", err);
+    return res
+      .status(500)
+      .json({ error: "Lỗi server khi lấy danh sách likes" });
+  }
+});
+
+// GET LIKES COUNT ONLY (Chỉ lấy số lượng lượt thích)
+router.get("/:id/likes-count", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    
+    const post = await Post.findById(sanitizedPostId);
+    
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    return res.status(200).json({
+      postId: post._id,
+      likesCount: post.likesCount,
+    });
+  } catch (err) {
+    console.error("Get likes count error:", err);
+    return res.status(500).json({ error: "Lỗi server khi lấy số lượng likes" });
+  }
+});
+
+// CHECK IF USER LIKED POST (Kiểm tra user đã thích bài viết chưa)
+router.get("/:id/like-status/:userId", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.params.userId));
+    
+    const post = await Post.findById(sanitizedPostId);
+    
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    const isLiked = post.likes.includes(sanitizedUserId);
+
+    return res.status(200).json({
+      postId: post._id,
+      userId: sanitizedUserId,
+      isLiked: isLiked,
+      likesCount: post.likesCount,
+    });
+  } catch (err) {
+    console.error("Check like status error:", err);
+    return res.status(500).json({ error: "Lỗi server khi kiểm tra trạng thái like" });
+  }
+});
+
 module.exports = router;

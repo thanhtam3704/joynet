@@ -152,79 +152,34 @@ export default {
         return;
       }
 
+      const axios = (await import('@/utils/axios')).default;
       try {
-        console.log(
-          "Sending request with fetch to: http://localhost:3000/api/auth/register"
-        );
-        console.log("Request data:", {
+        const response = await axios.post('/auth/register', {
           email: this.email,
           password: this.password,
           displayName: this.displayName,
+        }, {
+          withCredentials: true,
         });
-
-        const response = await fetch(
-          "http://localhost:3000/api/auth/register",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            credentials: "include",
-            body: JSON.stringify({
-              email: this.email,
-              password: this.password,
-              displayName: this.displayName,
-            }),
-          }
-        );
-
-        console.log("Response status:", response.status);
-        console.log("Response ok:", response.ok);
-
-        if (response.ok) {
-          const data = await response.json();
-          console.log("Đăng ký thành công:", data);
-
-          // Reset form
-          this.email = "";
-          this.password = "";
-          this.displayName = "";
-
-          // Chuyển trang
-          await this.$router.push("/login");
-        } else {
-          // Có lỗi (status 400, 500, etc.)
-          let errorData = {};
-          try {
-            errorData = await response.json();
-            console.log("Error data from server:", errorData);
-          } catch (e) {
-            console.log("Cannot parse error response as JSON");
-          }
-
-          if (response.status === 400) {
-            this.signupError =
-              errorData.error || errorData.message || "Email đã được sử dụng.";
-            console.log("Set error 400:", this.signupError);
-          } else if (response.status === 500) {
-            this.signupError = "Lỗi server. Vui lòng thử lại sau.";
-          } else if (response.status === 422) {
-            this.signupError =
-              errorData.error || errorData.message || "Dữ liệu không hợp lệ.";
-          } else {
-            this.signupError =
-              errorData.error ||
-              errorData.message ||
-              "Đăng ký thất bại. Vui lòng thử lại.";
-          }
-        }
+        // Reset form
+        this.email = "";
+        this.password = "";
+        this.displayName = "";
+        await this.$router.push("/login");
       } catch (error) {
-        console.log("Network error:", error);
-        this.signupError =
-          "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.";
+        if (error.response && error.response.status === 400) {
+          this.signupError = error.response.data.error || error.response.data.message || "Email đã được sử dụng.";
+        } else if (error.response && error.response.status === 500) {
+          this.signupError = "Lỗi server. Vui lòng thử lại sau.";
+        } else if (error.response && error.response.status === 422) {
+          this.signupError = error.response.data.error || error.response.data.message || "Dữ liệu không hợp lệ.";
+        } else if (error.response && (error.response.data.error || error.response.data.message)) {
+          this.signupError = error.response.data.error || error.response.data.message;
+        } else {
+          this.signupError = "Không thể kết nối đến máy chủ. Vui lòng thử lại sau.";
+        }
       } finally {
         this.signupLoading = false;
-        console.log("Final signupError:", this.signupError);
       }
     },
   },
@@ -306,7 +261,7 @@ export default {
     &:not(:placeholder-shown) {
       & + .input__label {
         transform: translate(0.25rem, -65%) scale(0.8);
-        color: var(--pink);
+        color: #ff80ab; /* Updated to match our pastel theme */
         background: var(--white);
         padding: 0 0.3em;
         z-index: 2;
@@ -367,7 +322,7 @@ button + button {
 }
 
 .warn {
-  color: var(--red);
+  color: #ff8a80; /* Lighter red to match our pastel theme */
 }
 // Logo và chữ Joynet trên một dòng, căn giữa đẹp
 .logo-row {
@@ -389,8 +344,8 @@ button + button {
 }
 // Hiệu ứng border đỏ khi input lỗi
 .input-error {
-  border-color: var(--red) !important;
-  box-shadow: 0 0 0 2px rgba(254, 123, 119, 0.15);
+  border-color: #ff8a80 !important; /* Lighter red to match our pastel theme */
+  box-shadow: 0 0 0 2px rgba(255, 138, 128, 0.15);
 }
 /* Google Signup Styles */
 .divider-row {

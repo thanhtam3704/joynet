@@ -42,9 +42,10 @@ body {
   background: rgb(255, 233, 233);
   background: linear-gradient(
     0deg,
-    rgba(255, 233, 233, 1) 10%,
+    rgba(255, 233, 233, 1) 4%,
     rgba(255, 250, 249, 1) 100%
   );
+  
   background-repeat: no-repeat;
   background-attachment: fixed;
 }

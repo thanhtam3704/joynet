@@ -35,11 +35,11 @@
 <script>
 import SidebarRight from "@/components/SidebarRight";
 import SidebarLeft from "@/components/SidebarLeft";
-import Timeline from "@/components/Timeline";
+import Timeline from "./components/Timeline.vue";
 import TheHeader from "@/components/TheHeader";
 import TheFooter from "@/components/TheFooter";
-import PostDetail from "@/components/PostDetail";
-import Post from "@/components/Post";
+import PostDetail from "@/views/post/components/PostDetail.vue";
+import Post from "./components/Post.vue";
 
 export default {
   name: "Home",
@@ -54,7 +54,6 @@ export default {
   },
   data() {
     return {
-      currentUser: this.$store.state.user._id,
       showModal: false,
       selectedPostId: null,
     };
@@ -63,14 +62,12 @@ export default {
     user() {
       return this.$store.state.user;
     },
+    currentUser() {
+      return this.$store.state.user?._id;
+    }
   },
   mounted() {
-    this.$store.dispatch("fetchUser");
-  },
-  provide() {
-    return {
-      id: this.$store.state.user._id,
-    };
+  this.$store.dispatch("loadUser");
   },
   methods: {
     openModal(postId) {
@@ -150,7 +147,7 @@ export default {
 }
 
 .modal-content {
-  background: white;
+  background: #fff5f8;
   border-radius: 12px;
   padding: 1rem;
   width: 90%;
@@ -160,6 +157,7 @@ export default {
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
   animation: slideIn 0.3s ease;
   position: relative;
+  border: 1px solid #ffe6eb;
 }
 
 @keyframes fadeIn {

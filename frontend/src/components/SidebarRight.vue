@@ -24,7 +24,7 @@
             <img
               v-else
               class="image-post__img"
-              src="../assets/defaultProfile.png"
+              src="@/assets/defaultProfile.png"
             />
             <label>{{ profileUser.displayName }}</label>
           </div>
@@ -49,19 +49,11 @@ export default {
   async created() {
     this.isLoading = true;
     try {
-      const response = await fetch("http://localhost:3000/api/users/", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      });
-
-      if (response.ok) {
-        this.users = await response.json();
-      }
+      const { getAllUsers } = await import('@/api/users');
+      const response = await getAllUsers();
+      this.users = response.data;
     } catch (error) {
-      console.error("Fetch users error:", error);
+  console.error("Load users error:", error);
     }
     this.isLoading = false;
   },
@@ -84,10 +76,7 @@ export default {
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE & Edge */
 }
-.friends {
-  /* padding: 1rem;
-  margin-top: 1rem; */
-}
+
 
 .friends-title {
   padding-top: 1rem;
