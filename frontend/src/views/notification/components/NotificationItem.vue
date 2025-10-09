@@ -115,11 +115,26 @@ export default {
     },
     
     navigateToNotification() {
+      console.log('Handling notification click:', this.notification);
+      
       switch (this.notification.type) {
         case 'like':
         case 'comment':
           if (this.notification.postId) {
-            this.$router.push(`/post-detail/${this.notification.postId}`);
+            // Lấy ID từ object hoặc string
+            const postId = typeof this.notification.postId === 'object' 
+              ? this.notification.postId._id 
+              : this.notification.postId;
+            
+            console.log('Opening post modal for:', postId);
+            // Emit event để mở modal thay vì navigate
+            this.$emit('open-post-modal', {
+              postId: postId,
+              notification: this.notification,
+              // Nếu là comment, truyền thêm commentId để scroll đến
+              commentId: this.notification.type === 'comment' ? this.notification.commentId : null,
+              scrollToComment: this.notification.type === 'comment'
+            });
           }
           break;
         case 'follow':

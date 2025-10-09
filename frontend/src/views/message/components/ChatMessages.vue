@@ -4,27 +4,57 @@
       {{ formatDate(messages[0].timestamp) }}
     </div>
     
-    <div v-for="(message, index) in groupedMessages" :key="message._id" class="message-group">
+    <div v-for="(message, index) in groupedMessages" :key="message && message._id ? message._id : index" class="message-group">
       <div class="message-timestamp" v-if="shouldShowTimestamp(index)">
-        {{ formatTime(message.timestamp) }}
+        {{ message && message.timestamp ? formatTime(message.timestamp) : '' }}
       </div>
       
       <div 
         class="message-bubble-container"
-        :class="{ 'outgoing': message.senderId === currentUserId }"
+        :class="{ 'outgoing': isMyMessage(message) }"
       >
-        <div class="message-avatar" v-if="message.senderId !== currentUserId">
-          <!-- We'll replace this with actual user avatar from store or props later -->
-          <img src="@/assets/defaultProfile.png" alt="Avatar" />
+        <div class="message-avatar" v-if="message && !isMyMessage(message)">
+          {{ logMessageForDebug(message) }}
+          <img 
+            v-if="message && message.senderAvatar"
+            :src="getAvatarUrl(message.senderAvatar)" 
+            alt="Avatar"
+            referrerpolicy="no-referrer"
+            crossorigin="anonymous"
+            @error="handleAvatarError"
+          />
+          <img 
+            v-else
+            src="@/assets/defaultProfile.png" 
+            alt="Default Avatar" 
+          />
         </div>
         <div 
           class="message-bubble"
           :class="{ 
-            'outgoing': message.senderId === currentUserId,
-            'incoming': message.senderId !== currentUserId
+            'outgoing': isMyMessage(message),
+            'incoming': !isMyMessage(message)
           }"
         >
-          {{ message.content }}
+          <div v-if="message && message.messageType === 'image'" class="message-image">
+            <img 
+              :src="message && (message.fileUrl || (message.file ? `http://localhost:3000/uploads/${message.file}` : ''))" 
+              alt="Image" 
+              @load="handleImageLoad"
+              @error="handleImageError"
+            />
+            <div v-if="!message.fileUrl && !message.file" class="debug-info" style="color: red; font-size: 10px;">
+              No image URL found
+            </div>
+          </div>
+          <div v-else-if="message && message.messageType === 'file'" class="message-file">
+            <i class="material-icons">attach_file</i>
+            <span>{{ message && (message.fileName || message.file) || '' }}</span>
+          </div>
+          <span v-if="message && message.content">{{ message.content }}</span>
+          <div v-if="message && message.isSending" class="message-status">
+            <i class="material-icons sending">schedule</i>
+          </div>
         </div>
       </div>
     </div>
@@ -53,6 +83,37 @@ export default {
     }
   },
   methods: {
+    isMyMessage(message) {
+      if (!message) return false;
+      
+      // Ưu tiên sử dụng flag trực tiếp nếu có
+      if (typeof message.isMyMessage === 'boolean') {
+        console.log(`🎯 Using flag - Message "${message.content}" is ${message.isMyMessage ? 'MINE' : 'THEIRS'}`);
+        return message.isMyMessage;
+      }
+      
+      // Fallback về comparison logic
+      if (!message.senderId || !this.currentUserId) {
+        console.log('Debug: Missing data', { 
+          message: !!message, 
+          senderId: message?.senderId, 
+          currentUserId: this.currentUserId 
+        });
+        return false;
+      }
+      
+      // Convert both to string để đảm bảo so sánh đúng
+      const isMe = String(message.senderId) === String(this.currentUserId);
+      console.log('Debug: Message comparison', { 
+        senderId: message.senderId, 
+        currentUserId: this.currentUserId, 
+        isMe,
+        senderType: typeof message.senderId,
+        currentType: typeof this.currentUserId
+      });
+      
+      return isMe;
+    },
     formatDate(timestamp) {
       if (!timestamp) return '';
       
@@ -100,10 +161,64 @@ export default {
       
       return (currentTime - prevTime) > 15 * 60 * 1000; // 15 minutes
     },
+    handleImageLoad() {
+      console.log('✅ Image loaded successfully');
+      this.scrollToBottom();
+    },
+    handleImageError(event) {
+      console.error('❌ Image load error:', event.target.src);
+    },
     scrollToBottom() {
       if (this.$refs.messagesEnd) {
         this.$refs.messagesEnd.scrollIntoView({ behavior: 'smooth' });
       }
+    },
+    handleImageLoad() {
+      // Scroll to bottom after image loads to show the complete message
+      this.$nextTick(() => {
+        this.scrollToBottom();
+      });
+    },
+    handleImageError(event) {
+      console.error('Error loading image:', event);
+      // Có thể hiển thị placeholder image hoặc error message
+    },
+    
+    getAvatarUrl(avatarPath) {
+      console.log('🖼️ Getting avatar URL for:', avatarPath, typeof avatarPath);
+      
+      if (!avatarPath) {
+        console.log('❌ No avatar path provided');
+        return '';
+      }
+      
+      // Nếu đã là absolute URL (bắt đầu bằng http/https)
+      if (avatarPath.startsWith('http')) {
+        console.log('✅ Using Google/absolute URL directly:', avatarPath);
+        return avatarPath; // Trả về nguyên URL cho Google OAuth avatar
+      }
+      
+      // Nếu là relative path (uploaded avatar), thêm base URL  
+      const fullUrl = `http://localhost:3000/uploads/user/${avatarPath}`;
+      console.log('✅ Constructed local URL:', fullUrl);
+      return fullUrl;
+    },
+    
+    handleAvatarError(event) {
+      console.error('❌ Avatar load error:', event.target.src);
+      console.log('🔄 Falling back to default avatar...');
+      
+      // Prevent infinite error loop
+      if (event.target.src.includes('defaultProfile.png')) {
+        return;
+      }
+      
+      // Fallback to default avatar
+      event.target.src = require('@/assets/defaultProfile.png');
+    },
+    
+    logMessageForDebug(message) {
+      return ''; // Method for debugging, now cleaned up
     }
   },
   updated() {
@@ -221,5 +336,66 @@ export default {
 
 .messages-end {
   height: 1px;
+}
+
+.message-image {
+  margin-bottom: 4px;
+  
+  img {
+    max-width: 250px;
+    max-height: 300px;
+    width: auto;
+    height: auto;
+    border-radius: 12px;
+    object-fit: cover;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    
+    &:hover {
+      transform: scale(1.02);
+    }
+    
+    &:loading {
+      background-color: #f5f5f5;
+      min-height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+}
+
+.message-file {
+  display: flex;
+  align-items: center;
+  
+  i {
+    margin-right: 8px;
+  }
+  
+  span {
+    font-size: 13px;
+  }
+}
+
+.message-status {
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+  
+  .sending {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    animation: rotate 1s linear infinite;
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

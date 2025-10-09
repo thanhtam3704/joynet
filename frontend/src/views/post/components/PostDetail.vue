@@ -48,13 +48,13 @@
         </div>
       </div>
       <div class="post-stats">
-        <HoverUserList :post-id="id" type="likes" :refresh-key="likesCount" container-selector=".post-detail">
+        <HoverUserList :post-id="String(id)" type="likes" :refresh-key="likesCount" container-selector=".post-detail">
           <div class="stats-likes" aria-label="Lượt thích">
             <span class="stats-like-icon">👍</span>
             <span class="stats-likes-number">{{ formatCompact(likesCount) }}</span>
           </div>
         </HoverUserList>
-        <HoverUserList :post-id="id" type="comments" :refresh-key="comments.length" container-selector=".post-detail">
+        <HoverUserList :post-id="String(id)" type="comments" :refresh-key="comments.length" container-selector=".post-detail">
           <div class="stats-comments" @click="scrollToComments" aria-label="Đi tới bình luận">
             {{ comments.length }} bình luận
           </div>
@@ -62,7 +62,7 @@
       </div>
       <!-- Action Bar - Like & Comment (reusable) -->
       <LikeActionBar
-        :post-id="id"
+        :post-id="String(id)"
         :initial-liked="isLiked"
         :initial-likes-count="likesCount"
         @comment="focusCommentInput"
@@ -77,6 +77,7 @@
           <div
             class="comment"
             v-if="comments.length > 0"
+            :data-comment-id="comments[0]._id"
             :class="{
               'comment--text-only': comments[0].comment && !comments[0].file,
               'comment--image-only': !comments[0].comment && comments[0].file,
@@ -113,6 +114,7 @@
               class="comment"
               v-for="(comment, index) in comments.slice(1)"
               :key="comment._id"
+              :data-comment-id="comment._id"
               :class="{
                 'comment--text-only': comment.comment && !comment.file,
                 'comment--image-only': !comment.comment && comment.file,
@@ -203,7 +205,19 @@ import { createToast } from "mosha-vue-toastify";
 import HoverUserList from '@/components/HoverUserList';
 export default {
   name: "PostDetail",
-  props: ["id"],
+  props: {
+    id: {
+      required: true
+    },
+    commentId: {
+      type: String,
+      default: null
+    },
+    scrollToComment: {
+      type: Boolean,
+      default: false
+    }
+  },
   components: { ProfileImage, SyncLoader, Skeletor, PostDisplayName, LikeActionBar, HoverUserList },
   data() {
     return {
@@ -247,20 +261,36 @@ export default {
   methods: {
   async loadPostData() {
       this.isSkeletorLoading = true;
-  console.log("Loading post data for ID:", this.id);
+      
+      // Debug ID trước khi gọi API
+      console.log("Raw ID:", this.id);
+      console.log("ID type:", typeof this.id);
+      console.log("ID stringified:", JSON.stringify(this.id));
+      
+      // Ensure ID is string
+      const postId = String(this.id);
+      console.log("Converted postId:", postId);
 
     try {
   const { getPost, getPostComments, getLikeStatus, getLikesCount } = await import('@/api/posts');
 
-        const responsePost = await getPost(this.id);
+        console.log("Calling getPost API with postId:", postId);
+        const responsePost = await getPost(postId);
+        console.log("API response status:", responsePost.status);
+        console.log("Full API response:", responsePost);
+        
         if (responsePost.status === 200) {
           this.posts = responsePost.data;
           console.log("Post data loaded:", this.posts);
+          
+          if (!this.posts || !this.posts._id) {
+            console.error("Post data is null or missing _id:", this.posts);
+          }
           // Khởi tạo trạng thái like từ API chuyên biệt (ổn định hơn)
           const currentUserId = this.$store?.state?.user?._id;
           if (currentUserId) {
             try {
-              const likeStatus = await getLikeStatus(this.id, currentUserId);
+              const likeStatus = await getLikeStatus(postId, currentUserId);
               if (likeStatus.status === 200) {
                 this.isLiked = !!likeStatus.data?.isLiked;
                 this.likesCount = likeStatus.data?.likesCount ?? (this.posts?.likesCount || 0);
@@ -274,7 +304,7 @@ export default {
             }
           } else {
             try {
-              const lc = await getLikesCount(this.id);
+              const lc = await getLikesCount(postId);
               this.likesCount = lc.status === 200 && typeof lc.data?.likesCount === 'number'
                 ? lc.data.likesCount
                 : (this.posts?.likesCount || 0);
@@ -284,20 +314,45 @@ export default {
           }
         } else {
           console.error("Failed to load post:", responsePost.status);
+          console.error("Response data:", responsePost.data);
         }
 
-        const responseComment = await getPostComments(this.id);
+        console.log("Loading comments for post ID:", postId);
+        const responseComment = await getPostComments(postId);
+        console.log("Comments API response:", responseComment);
+        
         if (responseComment.status === 200) {
           this.comments = responseComment.data;
-          console.log("Comments loaded:", this.comments.length);
+          console.log("Comments loaded:", this.comments.length, this.comments);
         } else {
           console.error("Failed to load comments:", responseComment.status);
+          console.error("Comments response data:", responseComment.data);
         }
       } catch (error) {
   console.error("Load post detail error:", error);
+  console.error("Error details:", error.response);
       }
 
       this.isSkeletorLoading = false;
+
+      // Scroll đến comment nếu có commentId và scrollToComment = true
+      console.log('PostDetail props:', {
+        scrollToComment: this.scrollToComment,
+        commentId: this.commentId,
+        id: this.id
+      });
+      
+      if (this.scrollToComment && this.commentId) {
+        console.log('Scrolling to comment:', this.commentId);
+        
+        // Tự động mở tất cả comments trước khi scroll
+        this.showAllComments = true;
+        
+        // Đợi một chút để đảm bảo comments đã render xong
+        setTimeout(() => {
+          this.scrollToSpecificComment(this.commentId);
+        }, 500);
+      }
     },
     // toggleLike logic moved into LikeActionBar component
 
@@ -338,10 +393,11 @@ export default {
         }
 
         // Thêm comment với text và/hoặc file
-        const response = await apiAddComment(this.id, {
+        const postId = String(this.id);
+        const response = await apiAddComment(postId, {
           comment: this.commentModel.trim() || undefined,
           userId: this.$store.state.user._id,
-          postId: this.id,
+          postId: postId,
           displayName: this.user.displayName,
           file: this.file ? this.file.name : undefined,
           isTextComment: !this.file,
@@ -383,6 +439,50 @@ export default {
         const el = this.$el.querySelector('.comments-section');
         if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } catch (_) {}
+    },
+
+    scrollToSpecificComment(commentId) {
+      try {
+        // Tìm comment element bằng commentId
+        const commentEl = this.$el.querySelector(`[data-comment-id="${commentId}"]`);
+        if (commentEl) {
+          commentEl.scrollIntoView({ 
+            behavior: 'smooth', 
+            block: 'center',
+            inline: 'nearest'
+          });
+          
+          // Tìm phần nội dung comment để highlight
+          const commentContent = commentEl.querySelector('.comment__content');
+          if (commentContent) {
+            // Highlight chỉ phần nội dung comment trong 3 giây
+            commentContent.classList.add('highlight-content');
+            
+            // Xóa highlight sau 1.5 giây
+            setTimeout(() => {
+              commentContent.classList.remove('highlight-content');
+            }, 1000);
+          }
+          
+          // Sau khi scroll xong, focus vào comment input để user có thể reply ngay
+          setTimeout(() => {
+            this.focusCommentInput();
+          }, 1000);
+        } else {
+          // Nếu không tìm thấy comment cụ thể, scroll đến phần comments và focus input
+          this.scrollToComments();
+          setTimeout(() => {
+            this.focusCommentInput();
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error scrolling to comment:', error);
+        // Fallback: scroll đến phần comments và focus input
+        this.scrollToComments();
+        setTimeout(() => {
+          this.focusCommentInput();
+        }, 500);
+      }
     },
   },
 };
@@ -432,8 +532,8 @@ export default {
 }
 .fb-modal-header__close {
   position: absolute;
-  top: 50%;
-  right: 0;
+  top: 55%;
+  right: -10px;
   transform: translateY(-50%);
   background: #e5e7eb;
   border: none;
@@ -1025,5 +1125,68 @@ export default {
 .view-more-btn:hover {
   color: #0056b3;
   text-decoration: underline;
+}
+
+/* Highlight comment effect - chỉ highlight nội dung comment, không highlight cả dòng */
+.comment__content.highlight-content {
+  background-color: #e3f2fd !important;
+  border: 2px solid #1877f2 !important;
+  border-radius: 18px !important;
+  padding: 12px 16px !important;
+  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.15) !important;
+  animation: highlight-fade 1.5s ease-in-out;
+  position: relative;
+}
+
+.comment__content.highlight-content::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #1877f2, #42a5f5);
+  border-radius: 20px;
+  z-index: -1;
+  animation: pulse-border 1.5s ease-in-out;
+}
+
+@keyframes highlight-fade {
+  0% {
+    background-color: #e3f2fd;
+    border-color: #1877f2;
+    transform: scale(1.03);
+  }
+  40% {
+    background-color: #e3f2fd;
+    border-color: #1877f2;
+    transform: scale(1.03);
+  }
+  100% {
+    background-color: transparent;
+    border-color: transparent;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-border {
+  0%, 40% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.1);
+  }
+}
+
+/* Highlight comment khi scroll đến */
+.highlight-comment {
+  background-color: rgba(255, 235, 59, 0.3);
+  border-left: 3px solid #ff9800;
+  padding-left: 8px;
+  margin-left: -8px;
+  transition: all 0.3s ease;
+  border-radius: 4px;
 }
 </style>

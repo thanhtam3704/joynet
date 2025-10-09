@@ -126,8 +126,27 @@ export default {
       this.emailError = false;
       this.showEmailError = false;
     },
-    signUpWithGoogle() {
-      alert("Chức năng đăng ký bằng Google sẽ được cập nhật!");
+    async signUpWithGoogle() {
+      try {
+        const { googleTokenLogin } = await import('vue3-google-login');
+        const response = await googleTokenLogin();
+        
+        // Gửi access_token đến backend (cùng endpoint với login)
+        const axios = (await import('@/utils/axios')).default;
+        const signupResponse = await axios.post('/auth/google/login', {
+          access_token: response.access_token
+        }, {
+          withCredentials: true,
+        });
+        
+        // Lưu token và chuyển hướng
+        localStorage.setItem("token", signupResponse.data.token);
+        this.$router.push("/home");
+        
+      } catch (error) {
+        console.error('Google signup error:', error);
+        this.signupError = 'Đăng ký Google thất bại. Vui lòng thử lại.';
+      }
     },
     validateEmail() {
       return /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(this.email);

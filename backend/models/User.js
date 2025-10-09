@@ -45,6 +45,18 @@ const UserSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    lastSeen: {
+      type: Date,
+      default: Date.now,
+    },
+    isOnline: {
+      type: Boolean,
+      default: false,
+    },
+    googleId: {
+      type: String,
+      default: null,
+    },
   },
   { timestamps: true }
 )

@@ -76,6 +76,8 @@
         />
         Đăng nhập bằng Google
       </button>
+      <!-- Hidden div for Google Sign-In button (fallback) -->
+      <div id="google-signin-button" style="display: none; margin-top: 1rem;"></div>
     </div>
   </article>
 </template>
@@ -99,16 +101,67 @@ export default {
       showEmailError: false,
     };
   },
+  mounted() {
+    // Kiểm tra URL params để xử lý Google OAuth callback
+    this.handleGoogleCallback();
+  },
   watch: {
     email() {
       this.showEmailError = false;
     },
   },
   methods: {
-    loginWithGoogle() {
-      // TODO: Thêm logic đăng nhập Google ở đây
-      alert("Chức năng đăng nhập bằng Google sẽ được cập nhật!");
+    async loginWithGoogle() {
+      try {
+        // Sử dụng redirect flow thay vì popup/credential
+        const clientId = '749220537519-beauagaft0dmdc9uf2ije8fo0mrdc9jd.apps.googleusercontent.com';
+        const redirectUri = 'http://localhost:3000/api/auth/google/callback';
+        const scope = 'openid email profile';
+        
+        // Tạo Google OAuth URL
+        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${clientId}` +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&response_type=code` +
+          `&scope=${encodeURIComponent(scope)}` +
+          `&access_type=offline` +
+          `&prompt=consent`;
+        
+        console.log('Redirecting to Google OAuth:', googleAuthUrl);
+        
+        // Redirect đến Google OAuth
+        window.location.href = googleAuthUrl;
+        
+      } catch (error) {
+        console.error('Google login error:', error);
+        this.error = 'Đăng nhập Google thất bại. Vui lòng thử lại.';
+      }
     },
+
+    
+    handleGoogleCallback() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get('token');
+      const success = urlParams.get('success');
+      const error = urlParams.get('error');
+      
+      if (token && success === 'google_login') {
+        // Lưu token và chuyển hướng
+        localStorage.setItem("token", token);
+        
+        // Clear URL params
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        // Redirect to home
+        this.$router.push("/home");
+      } else if (error === 'google_auth_failed') {
+        this.error = 'Đăng nhập Google thất bại. Vui lòng thử lại.';
+        
+        // Clear URL params
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    },
+    
     validateEmail() {
       // Trả về true nếu email hợp lệ, false nếu không hợp lệ
       return /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/.test(this.email);

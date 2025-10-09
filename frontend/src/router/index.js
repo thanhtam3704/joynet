@@ -83,6 +83,11 @@ const routes = [
     component: NotificationsPage,
     beforeEnter: requireAuth,
   },
+  {
+    path: "/auth/google/success",
+    name: "GoogleAuthSuccess",
+    component: () => import("@/views/auth/GoogleAuthSuccess.vue"),
+  },
 ];
 
 const router = createRouter({

@@ -2,15 +2,15 @@
   <div class="conversation-list">
     <div 
       v-for="conversation in conversations" 
-      :key="conversation._id"
+      :key="conversation && conversation._id ? conversation._id : Math.random()"
       class="conversation-item"
-      :class="{ 'active': activeConversationId === conversation._id }"
-      @click="$emit('select-conversation', conversation._id)"
+      :class="{ 'active': conversation && activeConversationId === conversation._id }"
+      @click="conversation && conversation._id ? $emit('select-conversation', conversation._id) : null"
     >
       <div class="conversation-avatar">
         <img 
-          v-if="conversation.recipientAvatar"
-          :src="`http://localhost:3000/uploads/user/${conversation.recipientAvatar}`" 
+          v-if="conversation && conversation.recipientAvatar"
+          :src="conversation && conversation.recipientAvatar ? `http://localhost:3000/uploads/user/${conversation.recipientAvatar}` : ''" 
           alt="Avatar"
         />
         <img 
@@ -18,17 +18,17 @@
           src="@/assets/defaultProfile.png" 
           alt="Default Avatar"
         />
-        <span v-if="conversation.unread > 0" class="unread-badge">
+        <span v-if="conversation && conversation.unread > 0" class="unread-badge">
           {{ conversation.unread }}
         </span>
       </div>
       <div class="conversation-details">
         <div class="conversation-info">
-          <span class="conversation-name">{{ conversation.recipientName }}</span>
-          <span class="conversation-time">{{ formatTime(conversation.lastMessageTime) }}</span>
+          <span class="conversation-name" :class="{ 'unread': conversation && conversation.unread > 0 }">{{ conversation && conversation.recipientName || 'Unknown' }}</span>
+          <span class="conversation-time" :class="{ 'unread': conversation && conversation.unread > 0 }">{{ conversation && conversation.lastMessageTime ? formatTime(conversation.lastMessageTime) : '' }}</span>
         </div>
-        <div class="conversation-message" :class="{ 'unread': conversation.unread > 0 }">
-          {{ truncateMessage(conversation.lastMessage) }}
+        <div class="conversation-message" :class="{ 'unread': conversation && conversation.unread > 0 }">
+          {{ conversation && conversation.lastMessage ? truncateMessage(conversation.lastMessage) : 'Bạn đã gửi một ảnh' }}
         </div>
       </div>
     </div>
@@ -152,6 +152,11 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  
+  &.unread {
+    font-weight: 700;
+    color: #e91e63;
+  }
 }
 
 .conversation-time {
@@ -159,6 +164,11 @@ export default {
   color: #e91e63;
   flex-shrink: 0;
   margin-left: 8px;
+  
+  &.unread {
+    font-weight: 600;
+    color: #d81b60;
+  }
 }
 
 .conversation-message {

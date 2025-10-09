@@ -32,14 +32,15 @@
           :notification="notification"
           @mark-read="markAsRead"
           @click="onNotificationClick"
+          @open-post-modal="handleOpenPostModal"
         />
       </div>
       
       <!-- Load More Footer -->
-      <div class="notification-footer" v-if="notifications.length > 0 && hasMore">
+      <div class="notification-footer" v-if="notifications.length > 0 && canShowMore && !showingMore">
         <button 
           class="load-more-btn" 
-          @click="loadMoreNotifications"
+          @click="handleShowMore"
           :disabled="loadingMore"
         >
           <span v-if="!loadingMore">Xem thông báo trước đó</span>
@@ -48,6 +49,13 @@
             <span>Đang tải...</span>
           </div>
         </button>
+      </div>
+      
+      <!-- Thông báo đã hiển thị hết -->
+      <div class="notification-footer" v-if="showingMore && !hasMore && allNotifications.length > 5">
+        <div class="all-loaded-message">
+          Đã hiển thị tất cả thông báo
+        </div>
       </div>
     </div>
   </div>
@@ -73,18 +81,31 @@ export default {
       markingAllAsRead: false,
       loadingMore: false,
       currentPage: 1,
-      limit: 10
+      limit: 5, // Giới hạn 5 notifications như Facebook
+      showingMore: false // Để track xem đang hiển thị nhiều hơn không
     };
   },
   computed: {
-    notifications() {
+    allNotifications() {
       return this.$store.getters.recentNotifications || [];
     },
+    notifications() {
+      // Nếu chưa bấm "xem thêm", chỉ hiển thị 5 cái đầu
+      if (!this.showingMore) {
+        return this.allNotifications.slice(0, 5);
+      }
+      // Nếu đã bấm "xem thêm", hiển thị tất cả
+      return this.allNotifications;
+    },
     hasUnread() {
-      return this.notifications.some(n => !n.isRead);
+      return this.allNotifications.some(n => !n.isRead);
     },
     hasMore() {
       return this.$store.state.notifications.hasMore;
+    },
+    canShowMore() {
+      // Có thể hiển thị thêm nếu có nhiều hơn 5 notifications hoặc còn dữ liệu từ server
+      return this.allNotifications.length > 5 || this.hasMore;
     }
   },
   watch: {
@@ -92,6 +113,7 @@ export default {
       if (visible) {
         // Luôn reset về trang 1 khi mở dropdown
         this.currentPage = 1;
+        this.showingMore = false; // Reset về chế độ hiển thị 6 cái đầu
         // Load notifications từ đầu
         this.loadNotifications();
       }
@@ -156,6 +178,26 @@ export default {
     onNotificationClick(notification) {
       // Đóng dropdown
       this.$emit('close');
+    },
+    
+    handleOpenPostModal(data) {
+      console.log('Handling open post modal:', data);
+      // Emit event lên parent (TheHeader) để mở modal
+      this.$emit('open-post-modal', data);
+      // Đóng dropdown notification
+      this.$emit('close');
+    },
+
+    async handleShowMore() {
+      if (!this.showingMore) {
+        // Lần đầu bấm: hiển thị tất cả notifications hiện có và load thêm nếu còn
+        this.showingMore = true;
+        
+        // Nếu còn dữ liệu từ server thì load luôn
+        if (this.hasMore) {
+          await this.loadMoreNotifications();
+        }
+      }
     }
   }
 };
@@ -329,6 +371,14 @@ export default {
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
+  }
+  
+  .all-loaded-message {
+    text-align: center;
+    padding: 12px 16px;
+    color: #8e8e8e;
+    font-size: 14px;
+    font-style: italic;
   }
 }
 

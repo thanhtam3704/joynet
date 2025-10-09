@@ -46,14 +46,26 @@ export default {
       isLoading: false,
     };
   },
+  computed: {
+    currentUserId() {
+      return this.$store.state.user?._id;
+    }
+  },
   async created() {
     this.isLoading = true;
     try {
+      // Đảm bảo user đã được load
+      await this.$store.dispatch('loadUser');
+      
       const { getAllUsers } = await import('@/api/users');
       const response = await getAllUsers();
-      this.users = response.data;
+      
+      // Filter out current user - chỉ hiển thị mọi người trừ tôi
+      this.users = response.data.filter(user => user._id !== this.currentUserId);
+      
+      console.log(`Loaded ${this.users.length} users (excluding current user)`);
     } catch (error) {
-  console.error("Load users error:", error);
+      console.error("Load users error:", error);
     }
     this.isLoading = false;
   },
@@ -63,18 +75,24 @@ export default {
 <style scoped>
 .right-sidebar {
   display: flex;
-  flex-direction: row;
+  flex-direction: column; /* Đổi thành column để stack các item theo chiều dọc */
   width: 17%;
-  height: 650px;
+  height: calc(100vh - 8rem); /* Sử dụng viewport height thay vì fixed 650px */
   margin-left: 1rem;
   margin-top: 5rem;
   position: fixed;
   z-index: 1;
   top: 0;
   overflow-x: hidden;
-  /* //ẩn cuộn */
+  overflow-y: auto; /* Cho phép scroll dọc */
+  /* Ẩn thanh scroll */
   scrollbar-width: none; /* Firefox */
   -ms-overflow-style: none; /* IE & Edge */
+}
+
+/* Ẩn scrollbar cho Webkit (Chrome/Safari) */
+.right-sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 
@@ -91,6 +109,14 @@ export default {
   justify-content: space-between;
   margin-left: 0.5em;
   margin-bottom: 1em;
+  padding: 0.5rem;
+  border-radius: 8px;
+  transition: background-color 0.3s ease;
+}
+
+.friend:hover {
+  background-color: #f0f2f5;
+  cursor: pointer;
 }
 
 .friend img {
@@ -102,6 +128,24 @@ export default {
   margin-left: 1em;
   font-size: 0.85em;
   font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+.friend:hover label {
+  color: #1877f2;
+}
+
+.friend-info {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-decoration: none;
+}
+
+.friend a {
+  text-decoration: none;
+  color: inherit;
+  width: 100%;
 }
 
 .online {

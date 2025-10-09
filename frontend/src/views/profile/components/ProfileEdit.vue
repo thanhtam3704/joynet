@@ -8,8 +8,25 @@
       <form class="pe-body" @submit.prevent="editProfile">
         <div class="pe-section pe-avatar-section">
           <div class="pe-avatar-wrapper">
-            <img v-if="previewAvatar" :src="previewAvatar" class="pe-avatar" alt="Avatar preview" />
-            <div v-else class="pe-avatar placeholder">{{ initials }}</div>
+            <img 
+              v-if="previewAvatar"
+              :src="previewAvatar" 
+              class="pe-avatar" 
+              alt="Avatar preview"
+            />
+            <img 
+              v-else-if="user.profilePicture"
+              :src="`http://localhost:3000/uploads/user/${user.profilePicture}`" 
+              class="pe-avatar" 
+              alt="Current avatar"
+              @error="handleImageError"
+            />
+            <img 
+              v-else
+              src="@/assets/defaultProfile.png" 
+              class="pe-avatar" 
+              alt="Default avatar"
+            />
             <div class="pe-avatar-actions">
               <button type="button" class="pe-btn-secondary" @click="triggerAvatar">Đổi ảnh đại diện</button>
               <input ref="file" type="file" class="hidden-input" accept="image/*" @change="onFileChange" />
@@ -76,17 +93,33 @@ export default {
   props: ["id"],
   computed: {
     user() {
-      return this.$store.state.user;
+      return this.$store.state.user || {};
     },
+
+    initials() {
+      return (this.displayName || this.user?.displayName || "?")
+        .split(/\s+/)
+        .filter(Boolean)
+        .slice(0,2)
+        .map(p=>p[0].toUpperCase())
+        .join("");
+    },
+    canSave() {
+      return !!this.displayName && !!this.description && !!this.birthDate && !!this.hobbies;
+    }
   },
   async mounted() {
-  this.$store.dispatch("loadUser");
-    this.displayName = this.user.displayName;
-    this.description = this.user.description;
-    this.birthDate = this.user.birthDate;
-    this.hobbies = this.user.hobbies;
+    await this.$store.dispatch("loadUser");
+    this.displayName = this.user.displayName || '';
+    this.description = this.user.description || '';
+    this.birthDate = this.user.birthDate || '';
+    this.hobbies = this.user.hobbies || '';
   },
   methods: {
+    handleImageError(event) {
+      console.log('Image load error, using default profile');
+      event.target.src = require('@/assets/defaultProfile.png');
+    },
     triggerAvatar() { this.$refs.file && this.$refs.file.click(); },
     onFileChange() {
       const file = this.$refs.file.files[0];
@@ -182,19 +215,6 @@ export default {
         this.isLoading = false;
       }
     },
-  },
-  computed: {
-    initials() {
-      return (this.displayName || this.user?.displayName || "?")
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0,2)
-        .map(p=>p[0].toUpperCase())
-        .join("");
-    },
-    canSave() {
-      return !!this.displayName && !!this.description && !!this.birthDate && !!this.hobbies;
-    }
   },
   watch: {
     openEditProfile(val) {

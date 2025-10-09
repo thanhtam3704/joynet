@@ -1,5 +1,6 @@
 const router = require('express').Router()
 const User = require('../models/User.js')
+const Notification = require('../models/Notification.js')
 const sanitize = require('mongo-sanitize')
 
 //GET ALL USERS
@@ -32,6 +33,23 @@ router.put('/:id/follow', async (req, res) => {
       if (!user.followers.includes(req.body.userId)) {
         await user.updateOne({ $push: { followers: req.body.userId } }) //add current user to user's followers
         await currentUser.updateOne({ $push: { followings: req.params.id } }) //add user to current user's followings
+        
+        // Tạo thông báo follow
+        const newNotification = new Notification({
+          fromUser: req.body.userId,
+          toUser: req.params.id,
+          type: 'follow',
+          message: `${currentUser.displayName || currentUser.email} đã theo dõi bạn`
+        })
+        await newNotification.save()
+
+        // Emit WebSocket notification
+        const io = req.app.get('io');
+        if (io) {
+          await newNotification.populate('fromUser', 'displayName profilePicture email');
+          io.emitNewNotification(newNotification, req.params.id);
+        }
+        
         return res.status(200).json('user has been followed')
       } else {
         return res.status(403).json('you already follow this user')
@@ -53,6 +71,14 @@ router.put('/:id/unfollow', async (req, res) => {
       if (user.followers.includes(req.body.userId)) {
         await user.updateOne({ $pull: { followers: req.body.userId } }) //delete current user from user's followers
         await currentUser.updateOne({ $pull: { followings: req.params.id } }) //delete user from current user's followings
+        
+        // Xóa thông báo follow cũ
+        await Notification.deleteOne({
+          fromUser: req.body.userId,
+          toUser: req.params.id,
+          type: 'follow'
+        })
+        
         return res.status(200).json('user has been unfollowed')
       } else {
         return res.status(403).json('you dont follow this user')

@@ -2,6 +2,8 @@ const router = require("express").Router();
 const Post = require("../models/Post.js");
 const User = require("../models/User.js");
 const Comment = require("../models/Comment.js");
+const Notification = require("../models/Notification.js");
+const { createNotification } = require("./notifications.js");
 const mongoSanitize = require("express-mongo-sanitize");
 const sanitize = require("mongo-sanitize");
 
@@ -64,6 +66,18 @@ router.put("/:id/comment", async (req, res) => {
     });
     await post.updateOne({ $push: { comments: req.body } });
     const addComment = await comment.save();
+
+    // Tạo thông báo cho chủ bài viết (nếu không phải tự comment bài viết của mình)
+    if (sanitizedUserId !== post.userId) {
+      await createNotification(
+        sanitizedUserId, // người comment
+        post.userId,     // chủ bài viết
+        'comment',       // loại thông báo
+        sanitizedPostId, // ID bài viết
+        addComment._id   // ID comment để scroll đến
+      );
+    }
+
     return res.status(200).json(addComment);
   } catch (err) {
     return res.status(500).json(err);
@@ -140,6 +154,16 @@ router.put("/:id/like", async (req, res) => {
       post.likesCount = Math.max(0, post.likesCount - 1);
       await post.save();
 
+      // Xóa notification nếu có
+      if (sanitizedUserId !== post.userId) {
+        await Notification.findOneAndDelete({
+          fromUser: sanitizedUserId,
+          toUser: post.userId,
+          type: 'like',
+          postId: sanitizedPostId
+        });
+      }
+
       return res.status(200).json({
         message: "Đã bỏ thích bài viết",
         isLiked: false,
@@ -150,6 +174,16 @@ router.put("/:id/like", async (req, res) => {
       post.likes.push(sanitizedUserId);
       post.likesCount += 1;
       await post.save();
+
+      // Tạo thông báo cho chủ bài viết (nếu không phải tự like bài viết của mình)
+      if (sanitizedUserId !== post.userId) {
+        await createNotification(
+          sanitizedUserId, // người like
+          post.userId,     // chủ bài viết
+          'like',          // loại thông báo
+          sanitizedPostId  // ID bài viết
+        );
+      }
 
       return res.status(200).json({
         message: "Đã thích bài viết",

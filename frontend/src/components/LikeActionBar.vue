@@ -81,6 +81,14 @@ export default {
 
           // Notify parent (e.g., PostDetail) to sync local vars
           this.$emit("updated", { isLiked, likesCount });
+          
+          // Trigger notification refresh if user liked someone else's post
+          if (isLiked) {
+            // Call global refresh function if available
+            if (window.refreshNotifications && typeof window.refreshNotifications === 'function') {
+              window.refreshNotifications();
+            }
+          }
         }
       } catch (err) {
         console.error("Toggle like error:", err);

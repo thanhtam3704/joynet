@@ -264,21 +264,32 @@ export default {
     
     async startConversation() {
       try {
-        // Create a new conversation with this user
-        const conversationId = await this.$store.dispatch('createConversation', this.id);
+        console.log('Starting conversation with user:', this.id);
         
-        if (conversationId) {
-          // Navigate to the message page with this conversation
+        // Import API để tạo conversation
+        const MessageAPI = (await import('@/api/messages')).default;
+        
+        // Tạo hoặc lấy conversation với user này
+        const response = await MessageAPI.createOrGetConversation(this.id);
+        
+        if (response && response.data) {
+          const conversationId = response.data._id;
+          console.log('Conversation created/found:', conversationId);
+          
+          // Navigate đến message page với conversation cụ thể
           this.$router.push({
             name: 'MessageDetail',
             params: { id: conversationId }
           });
         } else {
-          // If creating conversation fails, just go to messages page
+          // Nếu không tạo được conversation, vẫn đi đến messages page
           this.$router.push({ name: 'Messages' });
         }
       } catch (error) {
         console.error("Start conversation error:", error);
+        
+        // Fallback: đi đến messages page
+        this.$router.push({ name: 'Messages' });
       }
     },
     updateUser(user) {

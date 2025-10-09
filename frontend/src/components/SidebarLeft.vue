@@ -66,14 +66,69 @@
 export default {
   name: "SidebarLeft",
   props: ["currentUser"],
+  data() {
+    return {
+      messageUnreadCount: 0,
+      pollingInterval: null
+    };
+  },
   computed: {
     unreadCount() {
-      return this.$store.state.unreadCount || 0;
+      return this.messageUnreadCount;
     }
   },
-  mounted() {
+  methods: {
+    async loadUnreadCount() {
+      try {
+        const MessageAPI = (await import('@/api/messages')).default;
+        const response = await MessageAPI.getUnreadCount();
+        if (response?.data) {
+          this.messageUnreadCount = response.data.count || 0;
+        }
+      } catch (error) {
+        console.error('Error loading unread count:', error);
+      }
+    },
+
+    startPolling() {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+      }
+      
+      this.pollingInterval = setInterval(() => {
+        this.loadUnreadCount();
+      }, 3000); // Check mỗi 3 giây
+    },
+
+    stopPolling() {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+    }
+  },
+  async mounted() {
+    // Load initial unread count
+    await this.loadUnreadCount();
+    
+    // Start polling for new messages
+    this.startPolling();
+    
     // Load conversations to check for unread messages
     this.$store.dispatch("loadConversations");
+
+    // Listen for global notification updates
+    window.updateSidebarNotifications = () => {
+      this.loadUnreadCount();
+    };
+  },
+  beforeUnmount() {
+    this.stopPolling();
+    
+    // Clean up global function
+    if (window.updateSidebarNotifications) {
+      delete window.updateSidebarNotifications;
+    }
   }
 };
 </script>
@@ -158,7 +213,7 @@ export default {
 }
 
 .unread-badge {
-  background-color: #ff3b30;
+  background-color: #ff80ab;
   color: white;
   border-radius: 50%;
   min-width: 18px;
@@ -170,5 +225,6 @@ export default {
   justify-content: center;
   margin-left: auto;
   margin-right: 10px;
+  border: 2px solid white;
 }
 </style>

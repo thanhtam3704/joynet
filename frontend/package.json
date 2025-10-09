@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "vue-cli-service serve",
+    "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "test:unit": "vue-cli-service test:unit"
   },
@@ -12,10 +12,12 @@
     "axios": "^0.21.1",
     "core-js": "^3.6.5",
     "mosha-vue-toastify": "^1.0.17",
+    "socket.io-client": "^4.8.1",
     "vue": "^3.0.0",
     "vue-router": "^4.0.0-0",
     "vue-skeletor": "^1.0.6",
     "vue-spinner": "^1.0.4",
+    "vue3-google-login": "^2.0.34",
     "vuex": "^4.0.0-0"
   },
   "devDependencies": {

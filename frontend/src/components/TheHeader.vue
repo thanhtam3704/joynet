@@ -2,7 +2,6 @@
   <header>
     <div class="header">
       <div class="header__left">
-        <img class="header__logo" src="../assets/logo.png" />
         <p>Joynet</p>
       </div>
       <div class="header__main">
@@ -70,7 +69,7 @@
       </div>
       <div class="header__user">
         <!-- Notification Icon -->
-        <div class="notification-wrapper">
+        <div class="notification-wrapper" ref="notificationContainer">
           <i class="material-icons notification-icon" @click="toggleNotifications">
             notifications
           </i>
@@ -80,6 +79,7 @@
           <NotificationList 
             :isVisible="showNotifications" 
             @close="showNotifications = false"
+            @open-post-modal="handleOpenPostModal"
           />
         </div>
 
@@ -127,6 +127,24 @@
     </div>
 
   <AddPost v-if="openAddImagePost" :id="currentUser" />
+
+  <!-- Post Detail Modal -->
+  <div 
+    v-if="showPostModal" 
+    class="modal-overlay"
+    @click.self="closePostModal"
+  >
+    <div class="modal-content">
+      <button class="modal-close-btn" @click="closePostModal">×</button>
+      <PostDetail 
+        v-if="selectedPostId" 
+        :id="selectedPostId" 
+        :commentId="selectedCommentId"
+        :scrollToComment="scrollToComment"
+        @close="closePostModal"
+      />
+    </div>
+  </div>
   </header>
 </template>
 
@@ -134,6 +152,7 @@
 import SyncLoader from "vue-spinner/src/SyncLoader.vue";
 import AddPost from "@/components/AddPost.vue";
 import NotificationList from "@/views/notification/components/NotificationList.vue";
+import PostDetail from "@/views/post/components/PostDetail.vue";
 
 export default {
   name: "TheHeader",
@@ -141,6 +160,7 @@ export default {
     SyncLoader,
     AddPost,
     NotificationList,
+    PostDetail,
   },
   props: ["currentUser"],
   data() {
@@ -156,6 +176,11 @@ export default {
       selectedIndex: -1,
       searchTimeout: null,
       showNotifications: false,
+      showPostModal: false,
+      selectedPostId: null,
+      selectedCommentId: null,
+      scrollToComment: false,
+      notificationPollingInterval: null,
     };
   },
   computed: {
@@ -255,11 +280,65 @@ export default {
       
       if (this.showNotifications) {
         console.log('Loading notifications...');
-        this.$store.dispatch('loadNotifications').then(() => {
+        console.log('Notifications in store before load:', this.$store.state.notifications);
+        
+        // Refresh notification count và load notifications
+        Promise.all([
+          this.$store.dispatch('loadNotificationUnreadCount'),
+          this.$store.dispatch('loadNotifications')
+        ]).then(() => {
           console.log('Notifications loaded successfully');
+          console.log('Notifications in store after load:', this.$store.state.notifications);
         }).catch(error => {
           console.error('Error loading notifications:', error);
         });
+      }
+    },
+
+    // Method để force refresh notifications (có thể gọi từ các component khác)
+    refreshNotifications() {
+      this.$store.dispatch("loadNotificationUnreadCount");
+    },
+    
+    handleOpenPostModal(data) {
+      this.selectedPostId = data.postId;
+      this.selectedCommentId = data.commentId || null;
+      this.scrollToComment = data.scrollToComment || false;
+      this.showPostModal = true;
+      // Đóng notification dropdown
+      this.showNotifications = false;
+    },
+
+    closePostModal() {
+      this.showPostModal = false;
+      this.selectedPostId = null;
+      this.selectedCommentId = null;
+      this.scrollToComment = false;
+    },
+
+
+
+    startNotificationPolling() {
+      // Check for new notifications every 30 seconds
+      this.notificationPollingInterval = setInterval(() => {
+        // Only poll if user is logged in
+        if (this.$store.state.user && this.$store.state.user._id) {
+          this.$store.dispatch("loadNotificationUnreadCount");
+        }
+      }, 30000); // 30 seconds
+    },
+
+    stopNotificationPolling() {
+      if (this.notificationPollingInterval) {
+        clearInterval(this.notificationPollingInterval);
+        this.notificationPollingInterval = null;
+      }
+    },
+
+    handleVisibilityChange() {
+      if (!document.hidden && this.$store.state.user && this.$store.state.user._id) {
+        // Tab is now visible, refresh notification count
+        this.$store.dispatch("loadNotificationUnreadCount");
       }
     },
 
@@ -267,6 +346,11 @@ export default {
       // Check if click is outside the search container
       if (this.$refs.searchContainer && !this.$refs.searchContainer.contains(event.target)) {
         this.showSearchResults = false;
+      }
+      
+      // Check if click is outside the notification container
+      if (this.$refs.notificationContainer && !this.$refs.notificationContainer.contains(event.target)) {
+        this.showNotifications = false;
       }
     },
   },
@@ -276,13 +360,32 @@ export default {
     // Load notification unread count
     this.$store.dispatch("loadNotificationUnreadCount");
     
+    // Start polling for new notifications every 30 seconds
+    this.startNotificationPolling();
+    
     // Add event listener to handle clicks outside the search container
     document.addEventListener('click', this.handleClickOutside);
+    
+    // Add visibility change listener to refresh notifications when tab is focused
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    
+    // Tạo global function để refresh notifications
+    window.refreshNotifications = this.refreshNotifications;
+    window.updateNotifications = this.refreshNotifications;
   },
   
   beforeUnmount() {
     // Remove event listener when component is destroyed
     document.removeEventListener('click', this.handleClickOutside);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    
+    // Clean up global function
+    if (window.refreshNotifications === this.refreshNotifications) {
+      delete window.refreshNotifications;
+    }
+    
+    // Stop polling when component is destroyed
+    this.stopNotificationPolling();
   },
 };
 </script>
@@ -551,5 +654,55 @@ export default {
   justify-content: center;
   font-size: 11px;
   font-weight: bold;
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 12px;
+  max-width: 600px;
+  max-height: 80vh;
+  width: 90%;
+  position: relative;
+  overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 25px;
+  right: 15px;
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  z-index: 10;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.modal-close-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
 }
 </style>

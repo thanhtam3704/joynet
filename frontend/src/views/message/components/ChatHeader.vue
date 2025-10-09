@@ -3,8 +3,8 @@
     <div class="chat-header-user">
       <div class="chat-header-avatar">
         <img 
-          v-if="conversation.recipientAvatar"
-          :src="`http://localhost:3000/uploads/user/${conversation.recipientAvatar}`" 
+          v-if="conversation && conversation.recipientAvatar"
+          :src="conversation && conversation.recipientAvatar ? `http://localhost:3000/uploads/user/${conversation.recipientAvatar}` : ''" 
           alt="Avatar"
         />
         <img 
@@ -14,8 +14,8 @@
         />
       </div>
       <div class="chat-header-info">
-        <div class="chat-header-name">{{ conversation.recipientName }}</div>
-        <div class="chat-header-status">Hoạt động gần đây</div>
+        <div class="chat-header-name">{{ conversation && conversation.recipientName || 'Unknown User' }}</div>
+        <div class="chat-header-status">{{ getActivityStatus() }}</div>
       </div>
     </div>
     <div class="chat-header-actions">
@@ -39,6 +39,72 @@ export default {
     conversation: {
       type: Object,
       required: true
+    }
+  },
+  methods: {
+    getActivityStatus() {
+      if (!this.conversation) return '';
+      
+      // Debug log
+      console.log('ChatHeader conversation data:', {
+        recipientLastSeen: this.conversation.recipientLastSeen,
+        recipientIsOnline: this.conversation.recipientIsOnline,
+        recipientName: this.conversation.recipientName
+      });
+      
+      // Nếu không có lastSeen hoặc lastSeen không hợp lệ thì không hiển thị gì
+      if (!this.conversation.recipientLastSeen) {
+        console.log('No lastSeen data, returning empty');
+        return '';
+      }
+      
+      const lastSeen = new Date(this.conversation.recipientLastSeen);
+      const now = new Date();
+      
+      // Kiểm tra lastSeen có hợp lệ không
+      if (isNaN(lastSeen.getTime())) {
+        console.log('Invalid lastSeen date, returning empty');
+        return '';
+      }
+      
+      const diffMs = now - lastSeen;
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      
+      console.log('Time calculation:', {
+        lastSeen: lastSeen.toISOString(),
+        now: now.toISOString(),
+        diffMs: diffMs,
+        diffMinutes: diffMinutes,
+        isOnline: this.conversation.recipientIsOnline
+      });
+      
+      // Nếu lastSeen trong tương lai (không hợp lý) thì không hiển thị
+      if (diffMs < 0) {
+        console.log('LastSeen in future, returning empty');
+        return '';
+      }
+      
+      // Chỉ hiển thị "Đang hoạt động" nếu isOnline = true VÀ lastSeen trong vòng 5 phút
+      if (this.conversation.recipientIsOnline && diffMinutes <= 5) {
+        return 'Đang hoạt động';
+      }
+      
+      // Không hiển thị gì nếu lâu quá không online (hơn 24 giờ)
+      const diffHours = Math.floor(diffMinutes / 60);
+      if (diffHours > 24) {
+        console.log('More than 24 hours, returning empty');
+        return '';
+      }
+      
+      // Hiển thị trạng thái cho những người có activity trong 24 giờ qua
+      // Không hiển thị nếu dưới 1 phút (tránh "0 phút trước")
+      if (diffMinutes < 1) {
+        return '';
+      } else if (diffMinutes < 60) {
+        return `Hoạt động ${diffMinutes} phút trước`;
+      } else {
+        return `Hoạt động ${diffHours} giờ trước`;
+      }
     }
   }
 };

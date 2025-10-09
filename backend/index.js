@@ -1,5 +1,14 @@
 const express = require('express')
 const app = express()
+const http = require('http')
+const server = http.createServer(app)
+const { Server } = require("socket.io")
+const io = new Server(server, {
+  cors: {
+    origin: "http://localhost:8080",
+    credentials: true
+  }
+})
 const mongoose = require('mongoose')
 const dotenv = require('dotenv')
 const helmet = require('helmet')
@@ -8,10 +17,14 @@ const cors = require('cors')
 const fileupload = require('express-fileupload')
 const expressSanitizer = require('express-sanitizer')
 const sanitize = require('mongo-sanitize')
+const session = require('express-session')
+const passport = require('./config/passport')
 
 const userRoute = require('./routes/users')
 const authRoute = require('./routes/auth')
 const postRoute = require('./routes/posts')
+const notificationRoute = require('./routes/notifications')
+const messageRoute = require('./routes/messages')
 
 dotenv.config()
 console.log("MONGO_URL after load:", process.env.MONGO_URL);
@@ -28,17 +41,49 @@ mongoose.connect(
 )
 
 app.use(express.json())
-app.use(helmet())
+app.use(helmet({
+  crossOriginOpenerPolicy: false, // Disable COOP for Google OAuth compatibility
+  crossOriginEmbedderPolicy: false, // Disable COEP for Google OAuth compatibility  
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "https://accounts.google.com"],
+      frameSrc: ["'self'", "https://accounts.google.com"],
+      connectSrc: ["'self'", "https://accounts.google.com"]
+    }
+  }
+}))
 app.use(morgan('common'))
-app.use(cors({ credentials: true, origin: 'http://localhost:8080' }))
+app.use(cors({ 
+  credentials: true, 
+  origin: 'http://localhost:8080',
+  optionsSuccessStatus: 200
+}))
 app.use(fileupload())
 app.use('/uploads', express.static('uploads'))
 app.use(expressSanitizer())
 
+// Session & Passport middleware
+app.use(session({
+  secret: process.env.ACCESS_TOKEN_SECRET,
+  resave: false,
+  saveUninitialized: false
+}))
+app.use(passport.initialize())
+app.use(passport.session())
+
+// Make io available globally
+app.set('io', io)
+
 app.use('/api/users', userRoute)
 app.use('/api/auth', authRoute)
 app.use('/api/posts', postRoute)
+app.use('/api/notifications', notificationRoute)
+app.use('/api/messages', messageRoute)
 
-app.listen(3000, () => {
+// WebSocket Authentication & Events
+require('./socket/socketHandler')(io)
+
+server.listen(3000, () => {
   console.log('backend server is running!')
 })

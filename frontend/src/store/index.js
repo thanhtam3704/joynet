@@ -1,7 +1,7 @@
 import { Commit, createStore } from "vuex";
 import * as authApi from "@/api/auth";
 import * as postsApi from "@/api/posts";
-import * as messagesApi from "@/api/messages";
+import MessageAPI from "@/api/messages";
 
 export default createStore({
   state: {
@@ -158,7 +158,7 @@ export default createStore({
           await dispatch('loadUser');
         }
 
-        const response = await messagesApi.getConversations();
+        const response = await MessageAPI.getConversations();
         if (response.status === 200) {
           const conversations = response.data || [];
           commit('SET_CONVERSATIONS', conversations);
@@ -177,13 +177,13 @@ export default createStore({
     async loadMessages({ commit }, conversationId) {
       commit('SET_MESSAGE_LOADING', true);
       try {
-        const response = await messagesApi.getMessages(conversationId);
+        const response = await MessageAPI.getMessages(conversationId);
         if (response.status === 200) {
           commit('SET_MESSAGES', response.data || []);
           commit('SET_ACTIVE_CONVERSATION', conversationId);
           
           // Mark messages as read
-          await messagesApi.markAsRead(conversationId);
+          await MessageAPI.markAsRead(conversationId);
           commit('MARK_CONVERSATION_READ', conversationId);
         }
       } catch (error) {
@@ -195,7 +195,7 @@ export default createStore({
     
     async sendMessage({ commit, state }, { conversationId, content, file }) {
       try {
-        const response = await messagesApi.sendMessage(conversationId, content, file);
+        const response = await MessageAPI.sendMessage(conversationId, { content, file });
         if (response.status === 200) {
           const newMessage = response.data;
           commit('ADD_MESSAGE', newMessage);
@@ -214,7 +214,7 @@ export default createStore({
     
     async createConversation({ commit, dispatch }, recipientId) {
       try {
-        const response = await messagesApi.createConversation(recipientId);
+        const response = await MessageAPI.createOrGetConversation(recipientId);
         if (response.status === 200) {
           const conversation = response.data;
           commit('ADD_CONVERSATION', conversation);
@@ -248,7 +248,7 @@ export default createStore({
     },
 
     // Notification related actions
-    async loadNotifications({ commit, state }, { page = 1, limit = 20 } = {}) {
+    async loadNotifications({ commit, dispatch, state }, { page = 1, limit = 20 } = {}) {
       commit('SET_NOTIFICATIONS_LOADING', true);
       try {
         const { getNotifications } = await import('@/api/notifications');

@@ -3,10 +3,14 @@ import axiosInstance from '@/utils/axios';
 // Lấy danh sách thông báo
 export const getNotifications = async (page = 1, limit = 20) => {
   try {
+    console.log('🔔 Calling getNotifications API with page:', page, 'limit:', limit);
     const response = await axiosInstance.get(`/notifications?page=${page}&limit=${limit}`);
+    console.log('🔔 Notifications API response:', response);
+    console.log('🔔 Notifications data:', response.data);
     return response;
   } catch (error) {
-    console.error('Get notifications error:', error);
+    console.error('❌ Get notifications error:', error);
+    console.error('❌ Error response:', error.response);
     throw error;
   }
 };
@@ -14,10 +18,13 @@ export const getNotifications = async (page = 1, limit = 20) => {
 // Lấy số lượng thông báo chưa đọc
 export const getUnreadCount = async () => {
   try {
+    console.log('🔢 Calling getUnreadCount API');
     const response = await axiosInstance.get('/notifications/unread-count');
+    console.log('🔢 Unread count response:', response);
     return response;
   } catch (error) {
-    console.error('Get unread count error:', error);
+    console.error('❌ Get unread count error:', error);
+    console.error('❌ Error response:', error.response);
     throw error;
   }
 };
