@@ -108,6 +108,10 @@ export default {
       color: "pink",
     };
   },
+  mounted() {
+    // Kiểm tra URL params để xử lý Google OAuth callback
+    this.handleGoogleCallback();
+  },
   watch: {
     email() {
       this.resetErrors();
@@ -128,24 +132,116 @@ export default {
     },
     async signUpWithGoogle() {
       try {
-        const { googleTokenLogin } = await import('vue3-google-login');
-        const response = await googleTokenLogin();
+        this.signupLoading = true;
+        this.signupError = '';
         
-        // Gửi access_token đến backend (cùng endpoint với login)
-        const axios = (await import('@/utils/axios')).default;
-        const signupResponse = await axios.post('/auth/google/login', {
-          access_token: response.access_token
-        }, {
-          withCredentials: true,
-        });
+        // Sử dụng redirect flow như Login (vì đăng ký và đăng nhập Google về bản chất là giống nhau)
+        const clientId = '749220537519-beauagaft0dmdc9uf2ije8fo0mrdc9jd.apps.googleusercontent.com';
+        const redirectUri = 'http://localhost:3000/api/auth/google/callback';
+        const scope = 'openid email profile';
         
-        // Lưu token và chuyển hướng
-        localStorage.setItem("token", signupResponse.data.token);
-        this.$router.push("/home");
+        // Tạo nonce để bảo vệ CSRF
+        const nonce = this.generateSecureNonce();
+        localStorage.setItem('google_auth_nonce', nonce);
+        
+        // Tạo Google OAuth URL
+        const googleAuthUrl = `https://accounts.google.com/o/oauth2/v2/auth?` +
+          `client_id=${clientId}` +
+          `&redirect_uri=${encodeURIComponent(redirectUri)}` +
+          `&response_type=code` +
+          `&scope=${encodeURIComponent(scope)}` +
+          `&state=${nonce}` +
+          `&access_type=offline` +
+          `&prompt=consent`;
+        
+        console.log('Redirecting to Google OAuth for signup');
+        
+        // Redirect đến Google OAuth
+        window.location.href = googleAuthUrl;
         
       } catch (error) {
         console.error('Google signup error:', error);
         this.signupError = 'Đăng ký Google thất bại. Vui lòng thử lại.';
+        this.signupLoading = false;
+      }
+    },
+    
+    // Tạo nonce an toàn để ngăn chặn CSRF
+    generateSecureNonce() {
+      const array = new Uint32Array(4);
+      window.crypto.getRandomValues(array);
+      return Array.from(array, dec => ('0' + dec.toString(16)).substr(-2)).join('');
+    },
+    
+    // Xử lý Google OAuth callback
+    handleGoogleCallback() {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const token = urlParams.get('token');
+        const success = urlParams.get('success');
+        const error = urlParams.get('error');
+        
+        // Log thông tin để debug
+        if (success || error || token) {
+          console.log('Google signup callback received:', { 
+            success, 
+            error, 
+            hasToken: !!token,
+            url: window.location.href
+          });
+        }
+        
+        // Kiểm tra nonce nếu có state
+        const state = urlParams.get('state');
+        const storedNonce = localStorage.getItem('google_auth_nonce');
+        if (state && storedNonce && state !== storedNonce) {
+          console.error('Security warning: OAuth state/nonce mismatch');
+          this.signupError = 'Lỗi bảo mật: Phiên xác thực không hợp lệ';
+          localStorage.removeItem('google_auth_nonce');
+          window.history.replaceState({}, document.title, window.location.pathname);
+          return;
+        }
+        
+        // Xóa nonce sau khi sử dụng
+        if (storedNonce) {
+          localStorage.removeItem('google_auth_nonce');
+        }
+        
+        if (token && success === 'google_login') {
+          // Kiểm tra token hợp lệ
+          if (!token || typeof token !== 'string' || token.length < 20) {
+            console.error('Invalid token format received');
+            this.signupError = 'Lỗi xác thực: Token không hợp lệ';
+            window.history.replaceState({}, document.title, window.location.pathname);
+            return;
+          }
+          
+          // Lưu token và chuyển hướng
+          localStorage.setItem("token", token);
+          console.log('Google signup successful - token saved');
+          
+          // Clear URL params
+          window.history.replaceState({}, document.title, window.location.pathname);
+          
+          // Redirect to home
+          setTimeout(() => {
+            this.$router.push("/home");
+          }, 50);
+        } else if (error) {
+          // Xử lý lỗi
+          if (error === 'google_auth_failed') {
+            this.signupError = 'Đăng ký Google thất bại. Vui lòng thử lại.';
+          } else {
+            this.signupError = `Lỗi xác thực: ${error}`;
+          }
+          
+          console.warn('Google signup error:', error);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (e) {
+        console.error('Error processing Google signup callback:', e);
+        this.signupError = 'Lỗi xử lý phản hồi từ Google. Vui lòng thử lại.';
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
     },
     validateEmail() {

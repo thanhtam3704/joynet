@@ -270,9 +270,22 @@ router.get('/google', (req, res, next) => {
 
 // GET - Google OAuth callback
 router.get('/google/callback', 
-  passport.authenticate('google', { failureRedirect: '/login' }),
+  (req, res, next) => {
+    console.log('Received Google callback with params:', req.query);
+    next();
+  },
+  passport.authenticate('google', { 
+    failureRedirect: 'http://localhost:8080/login?error=google_auth_failed' 
+  }),
   async (req, res) => {
     try {
+      console.log('Google callback successful, user:', req.user?.email);
+      
+      if (!req.user) {
+        console.error('No user found in request after authentication');
+        return res.redirect('http://localhost:8080/login?error=no_user');
+      }
+      
       // Tạo JWT token cho user
       const token = jwt.sign(
         { userId: req.user._id },
@@ -280,8 +293,10 @@ router.get('/google/callback',
         { expiresIn: '7d' }
       );
       
-      // Redirect về frontend với token
-      res.redirect(`http://localhost:8080/auth/google/success?token=${token}`);
+      console.log('Generated token for user:', req.user._id);
+      
+      // Redirect về frontend với token và success flag
+      res.redirect(`http://localhost:8080/login?token=${token}&success=google_login`);
     } catch (error) {
       console.error('Google callback error:', error);
       res.redirect('http://localhost:8080/login?error=google_auth_failed');
