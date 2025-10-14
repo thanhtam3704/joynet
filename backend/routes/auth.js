@@ -74,7 +74,6 @@ router.post("/register", async (req, res) => {
           "Đăng ký thành công! Vui lòng kiểm tra email để xác thực tài khoản của bạn.",
       });
     } catch (emailErr) {
-      console.error("Email sending failed:", emailErr);
       return res.status(500).json({
         error: "Không thể gửi email xác thực",
         details: emailErr.message,
@@ -236,7 +235,6 @@ router.put("/update-activity", async (req, res) => {
 
     res.status(200).json({ message: "Activity updated" });
   } catch (error) {
-    console.error("Update activity error:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -262,7 +260,6 @@ setInterval(async () => {
 // Google OAuth Routes
 // GET - Bắt đầu Google OAuth flow
 router.get('/google', (req, res, next) => {
-  console.log('Starting Google OAuth flow...');
   passport.authenticate('google', {
     scope: ['profile', 'email']
   })(req, res, next);
@@ -271,7 +268,6 @@ router.get('/google', (req, res, next) => {
 // GET - Google OAuth callback
 router.get('/google/callback', 
   (req, res, next) => {
-    console.log('Received Google callback with params:', req.query);
     next();
   },
   passport.authenticate('google', { 
@@ -293,12 +289,10 @@ router.get('/google/callback',
         { expiresIn: '7d' }
       );
       
-      console.log('Generated token for user:', req.user._id);
       
       // Redirect về frontend với token và success flag
       res.redirect(`http://localhost:8080/login?token=${token}&success=google_login`);
     } catch (error) {
-      console.error('Google callback error:', error);
       res.redirect('http://localhost:8080/login?error=google_auth_failed');
     }
   }
@@ -307,8 +301,6 @@ router.get('/google/callback',
 // POST - Google Login từ frontend (alternative method)
 router.post('/google/login', async (req, res) => {
   try {
-    console.log('Google login request body:', req.body);
-    
     const { credential, access_token } = req.body;
     
     let userInfo;
@@ -400,7 +392,6 @@ router.post('/google/login', async (req, res) => {
     });
     
   } catch (error) {
-    console.error('Google login error:', error);
     res.status(500).json({ error: 'Google authentication failed' });
   }
 });

@@ -17,7 +17,6 @@ const verifyToken = (req, res, next) => {
     req.user = { id: verified.userId };
     next();
   } catch (error) {
-    console.error('Token verification error:', error);
     res.status(401).json({ error: 'Invalid token' });
   }
 };
@@ -59,7 +58,6 @@ router.get('/conversations', verifyToken, async (req, res) => {
 
     res.status(200).json(formattedConversations || []);
   } catch (error) {
-    console.error('Get conversations error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -99,7 +97,6 @@ router.get('/conversations/:conversationId/messages', verifyToken, async (req, r
       currentPage: page
     });
   } catch (error) {
-    console.error('Get messages error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -147,8 +144,6 @@ router.post('/conversations/:conversationId/messages', verifyToken, async (req, 
       // Upload file
       const uploadPath = `./uploads/${fileName}`;
       await uploadedFile.mv(uploadPath);
-      
-      console.log('✅ File uploaded successfully:', fileName);
     }
     
     // Lấy content từ body
@@ -206,8 +201,6 @@ router.post('/conversations/:conversationId/messages', verifyToken, async (req, 
         };
       }
     }
-
-    console.log('🔍 [Backend] Final sender data for WebSocket:', senderData);
 
     // Emit WebSocket event for real-time messaging
     const io = req.app.get('io');

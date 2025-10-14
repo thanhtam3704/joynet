@@ -272,4 +272,85 @@ router.get("/:id/like-status/:userId", async (req, res) => {
   }
 });
 
+// EDIT POST (Sửa bài viết)
+router.put("/:id", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+    const sanitizedDescription = sanitize(req.sanitize(req.body.description));
+    const sanitizedFile = sanitize(req.sanitize(req.body.file));
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    // Kiểm tra quyền sở hữu - chỉ chủ bài viết mới được sửa
+    if (post.userId !== sanitizedUserId) {
+      return res.status(403).json({ error: "Bạn không có quyền sửa bài viết này" });
+    }
+
+    // Cập nhật thông tin bài viết
+    const updateData = {};
+    if (sanitizedDescription !== undefined) {
+      updateData.description = sanitizedDescription;
+    }
+    if (sanitizedFile !== undefined) {
+      updateData.file = sanitizedFile;
+    }
+    updateData.updatedAt = new Date();
+
+    const updatedPost = await Post.findByIdAndUpdate(
+      sanitizedPostId,
+      { $set: updateData },
+      { new: true } // Trả về document sau khi đã cập nhật
+    );
+
+    return res.status(200).json({
+      message: "Đã cập nhật bài viết thành công",
+      post: updatedPost
+    });
+  } catch (err) {
+    console.error("Edit post error:", err);
+    return res.status(500).json({ error: "Lỗi server khi sửa bài viết" });
+  }
+});
+
+// DELETE POST (Xóa bài viết)
+router.delete("/:id", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    // Kiểm tra quyền sở hữu - chỉ chủ bài viết mới được xóa
+    if (post.userId !== sanitizedUserId) {
+      return res.status(403).json({ error: "Bạn không có quyền xóa bài viết này" });
+    }
+
+    // Xóa tất cả comments liên quan đến bài viết này
+    await Comment.deleteMany({ postId: sanitizedPostId });
+
+    // Xóa tất cả notifications liên quan đến bài viết này
+    await Notification.deleteMany({ postId: sanitizedPostId });
+
+    // Xóa bài viết
+    await Post.findByIdAndDelete(sanitizedPostId);
+
+    return res.status(200).json({
+      message: "Đã xóa bài viết thành công",
+      postId: sanitizedPostId
+    });
+  } catch (err) {
+    console.error("Delete post error:", err);
+    return res.status(500).json({ error: "Lỗi server khi xóa bài viết" });
+  }
+});
+
 module.exports = router;

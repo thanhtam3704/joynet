@@ -147,9 +147,6 @@
       </div>
     </div>
 
-    <!-- Padding để tạo không gian cho comment box cố định ở dưới -->
-    <div class="comment-padding"></div>
-
     <!-- Comment input box luôn hiển thị dạng sticky footer -->
     <div class="comment-input-box sticky-footer">
       <ProfileImage :id="user._id" class="comment-avatar" />
@@ -496,7 +493,7 @@ export default {
   right: 0;
   width: 100%;
   background: #fff;
-  border-radius: 0;
+  border-radius: 12px 12px 0 0;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   border-bottom: 1px solid #eee;
   z-index: 20;
@@ -573,7 +570,6 @@ export default {
   justify-content: flex-start;
   flex-direction: column;
   background-color: white;
-  border-radius: 0 0 1rem 1rem; /* Bo góc dưới, phía trên sát header */
   margin-bottom: 0; /* Loại bỏ margin để không có khoảng trống giữa nội dung và comment box */
   transform: translate(
     0,
@@ -878,11 +874,6 @@ export default {
     hue-rotate(346deg) brightness(104%) contrast(97%);
 }
 
-.comment-padding {
-  height: 50px; /* Tăng không gian cho comment box */
-  margin-top: 2rem; /* Thêm margin để tạo không gian giữa comments và comment box */
-}
-
 .post-stats {
   display: flex;
   align-items: center;
@@ -926,7 +917,6 @@ export default {
   display: flex;
   align-items: flex-start;
   padding: 1rem;
-  border-top: 1px solid #e0e0e0;
   margin-top: 1rem;
   gap: 0.75rem;
 }

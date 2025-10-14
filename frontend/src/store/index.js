@@ -115,7 +115,7 @@ export default createStore({
         console.error("Load posts error:", error);
       }
     },
-    async addPost({ commit }, { post, formData = null }) {
+    async addPost({ commit, dispatch }, { post, formData = null }) {
       try {
         // Tạo post trước
         const postResponse = await postsApi.createPost(post);
@@ -129,10 +129,40 @@ export default createStore({
         }
 
         if (postResponse.status === 200 && uploadSuccess) {
-          commit("ADD_POST", post);
+          // Thay vì ADD_POST với dữ liệu cũ, load lại posts để có dữ liệu đầy đủ
+          await dispatch("loadPosts");
+          return { success: true, post: postResponse.data };
         }
       } catch (error) {
         console.error("Add post error:", error);
+        throw error;
+      }
+    },
+    async editPost({ commit }, { postId, updatedPost }) {
+      try {
+        const response = await postsApi.editPost(postId, updatedPost);
+        if (response.status === 200) {
+          commit("UPDATE_POST", {
+            postId,
+            updatedData: response.data.post
+          });
+          return response;
+        }
+      } catch (error) {
+        console.error("Edit post error:", error);
+        throw error;
+      }
+    },
+    async deletePost({ commit }, { postId, userId }) {
+      try {
+        const response = await postsApi.deletePost(postId, userId);
+        if (response.status === 200) {
+          commit("DELETE_POST", postId);
+          return response;
+        }
+      } catch (error) {
+        console.error("Delete post error:", error);
+        throw error;
       }
     },
     async refreshToken() {
@@ -324,6 +354,17 @@ export default createStore({
     async addNewNotification({ commit }, notification) {
       commit('ADD_NEW_NOTIFICATION', notification);
       commit('INCREMENT_NOTIFICATION_UNREAD_COUNT');
+    },
+    
+    // Action để cập nhật avatar user
+    async updateUserAvatar({ commit, dispatch }, { userId, profilePicture }) {
+      commit('UPDATE_USER_AVATAR', { userId, profilePicture });
+      
+      // Reload current user nếu cập nhật avatar của chính mình
+      const currentUser = this.state.user;
+      if (currentUser && currentUser._id === userId) {
+        await dispatch('loadUser');
+      }
     }
   },
   mutations: {
@@ -342,7 +383,8 @@ export default createStore({
       state.posts = posts;
     },
     ADD_POST(state, post) {
-      state.posts.push(post);
+      // Thêm bài viết mới vào đầu danh sách (hiển thị mới nhất trước)
+      state.posts.unshift(post);
     },
     UPDATE_POST_LIKE(state, { postId, isLiked, likesCount }) {
       const idx = state.posts.findIndex((p) => p._id === postId);
@@ -355,6 +397,32 @@ export default createStore({
               ? likesCount
               : state.posts[idx].likesCount || 0,
         };
+      }
+    },
+    UPDATE_POST(state, { postId, updatedData }) {
+      const idx = state.posts.findIndex((p) => p._id === postId);
+      if (idx !== -1) {
+        state.posts[idx] = {
+          ...state.posts[idx],
+          ...updatedData,
+        };
+      }
+    },
+    DELETE_POST(state, postId) {
+      const idx = state.posts.findIndex((p) => p._id === postId);
+      if (idx !== -1) {
+        state.posts.splice(idx, 1);
+      }
+    },
+    UPDATE_USER_AVATAR(state, { userId, profilePicture }) {
+      // Cập nhật avatar trong user state nếu là current user
+      if (state.user && state.user._id === userId) {
+        state.user.profilePicture = profilePicture;
+      }
+      
+      // Cập nhật avatar trong cache usersById
+      if (state.usersById[userId]) {
+        state.usersById[userId].profilePicture = profilePicture;
       }
     },
     

@@ -16,11 +16,24 @@ router.get('/', async (req, res) => {
 //GET USER
 router.get('/:userId', async (req, res) => {
   try {
-    const getUser = await User.findById(req.params.userId) //findById by params
+    const userId = sanitize(req.sanitize(req.params.userId))
+    
+    // Validate ObjectId format
+    if (!userId || !userId.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({ error: 'Invalid user ID format' })
+    }
+
+    const getUser = await User.findById(userId) //findById by params
+    
+    if (!getUser) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+    
     const { password, updatedAt, ...other } = getUser._doc //do not show password and upadtedAt datas
     return res.status(200).json(other)
   } catch (err) {
-    return res.status(500).json(err)
+    console.error('Get user error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
   }
 })
 
@@ -104,15 +117,20 @@ router.put('/:id/edit', async (req, res) => {
 
     const getUser = await User.findById(req.params.id)
 
-    await getUser.updateOne({
-      $set: {
-        displayName: sanitizedDisplayName,
-        description: sanitizedDesc,
-        birthDate: sanitizedBirthDate,
-        hobbies: sanitizedHobbies,
-        profilePicture: sanitizedProfilePicture,
-      },
-    })
+    // Chuẩn bị object update
+    const updateData = {
+      displayName: sanitizedDisplayName,
+      description: sanitizedDesc,
+      birthDate: sanitizedBirthDate,
+      hobbies: sanitizedHobbies,
+    }
+
+    // Chỉ cập nhật profilePicture nếu có giá trị mới
+    if (sanitizedProfilePicture) {
+      updateData.profilePicture = sanitizedProfilePicture
+    }
+
+    await getUser.updateOne({ $set: updateData })
     return res.status(200).json({ msg: 'user has been updated' })
   } catch (err) {
     return res.status(500).json(err)

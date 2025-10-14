@@ -6,6 +6,10 @@
         <button class="pe-close" @click="closeModal" aria-label="Đóng">&times;</button>
       </div>
       <form class="pe-body" @submit.prevent="editProfile">
+        <div v-if="isLoadingUserData" class="pe-loading">
+          <sync-loader :color="color" size="10" />
+          <span>Đang tải thông tin...</span>
+        </div>
         <div class="pe-section pe-avatar-section">
           <div class="pe-avatar-wrapper">
             <img 
@@ -82,6 +86,7 @@ export default {
       hobbies: "",
       openEditProfile: true,
       isLoading: false,
+      isLoadingUserData: false,
       fillError: false,
       color: "pink",
       editingSuccess: "",
@@ -93,6 +98,11 @@ export default {
   props: ["id"],
   computed: {
     user() {
+      // Nếu có ID truyền vào, lấy từ cache usersById
+      if (this.id) {
+        return this.$store.state.usersById?.[this.id] || {};
+      }
+      // Nếu không có ID, lấy current user
       return this.$store.state.user || {};
     },
 
@@ -109,13 +119,62 @@ export default {
     }
   },
   async mounted() {
-    await this.$store.dispatch("loadUser");
-    this.displayName = this.user.displayName || '';
-    this.description = this.user.description || '';
-    this.birthDate = this.user.birthDate || '';
-    this.hobbies = this.user.hobbies || '';
+    await this.loadUserData();
+  },
+  async created() {
+    // Load dữ liệu ngay khi component được tạo
+    await this.loadUserData();
   },
   methods: {
+    async loadUserData() {
+      console.log('Loading user data for ID:', this.id);
+      this.isLoadingUserData = true;
+      try {
+        // Nếu có ID truyền vào, load thông tin của user đó
+        if (this.id) {
+          const axios = (await import('@/utils/axios')).default;
+          const response = await axios.get(`/users/${this.id}`, { withCredentials: true });
+          
+          if (response.status === 200 && response.data) {
+            const user = response.data;
+            
+            // Cache user data trong store
+            this.$store.commit('CACHE_USER', user);
+            
+            this.displayName = user.displayName || '';
+            this.description = user.description || '';
+            this.birthDate = user.birthDate || '';
+            this.hobbies = user.hobbies || '';
+            
+            console.log('Loaded user data for ID:', this.id, user);
+            return;
+          }
+        }
+        
+        // Fallback: load current user nếu không có ID hoặc load thất bại
+        await this.$store.dispatch("loadUser");
+        await this.$nextTick();
+        
+        const user = this.$store.state.user || {};
+        this.displayName = user.displayName || '';
+        this.description = user.description || '';
+        this.birthDate = user.birthDate || '';
+        this.hobbies = user.hobbies || '';
+        
+        console.log('Loaded current user data:', user);
+      } catch (error) {
+        console.error('Error loading user data:', error);
+        
+        // Fallback cuối cùng: thử load từ store
+        const user = this.$store.state.user || {};
+        this.displayName = user.displayName || '';
+        this.description = user.description || '';
+        this.birthDate = user.birthDate || '';
+        this.hobbies = user.hobbies || '';
+      } finally {
+        this.isLoadingUserData = false;
+      }
+    },
     handleImageError(event) {
       console.log('Image load error, using default profile');
       event.target.src = require('@/assets/defaultProfile.png');
@@ -171,21 +230,35 @@ export default {
 
         try {
           const axios = (await import('@/utils/axios')).default;
-          const responseUser = await axios.put(`/users/${currentUser}/edit`, {
+          
+          // Chuẩn bị dữ liệu để cập nhật
+          const updateData = {
             displayName: this.displayName,
             description: this.description,
             birthDate: this.birthDate,
             hobbies: this.hobbies,
-            profilePicture: this.file.name,
-          }, {
+          };
+          
+          // Chỉ thêm profilePicture nếu có file mới
+          if (this.file) {
+            updateData.profilePicture = this.file.name;
+            console.log('Updating with new profile picture:', this.file.name);
+          } else {
+            console.log('No new profile picture, keeping existing avatar');
+          }
+          
+          const responseUser = await axios.put(`/users/${currentUser}/edit`, updateData, {
             withCredentials: true,
           });
 
           if (responseUser.status === 200) {
-            await axios.post('/auth/upload', formData, {
-              withCredentials: true,
-              headers: { 'Content-Type': 'multipart/form-data' },
-            });
+            // Chỉ upload file nếu có file mới
+            if (this.file) {
+              await axios.post('/auth/upload', formData, {
+                withCredentials: true,
+                headers: { 'Content-Type': 'multipart/form-data' },
+              });
+            }
 
             const getUser = await axios.get(`/users/${currentUser}`, {
               withCredentials: true,
@@ -193,8 +266,32 @@ export default {
 
             if (getUser.status === 200) {
               const userData = getUser.data;
+              
+              // Nếu response không có profilePicture nhưng user có ảnh, preserve nó
+              if (!userData.profilePicture && this.user.profilePicture) {
+                userData.profilePicture = this.user.profilePicture;
+                console.log('Preserved profilePicture:', userData.profilePicture);
+              }
+              
               this.$emit("updateUser", userData);
-              this.$store.dispatch("loadUser");
+              
+              // Cập nhật cache trong store
+              this.$store.commit('CACHE_USER', userData);
+              
+              // Cập nhật avatar trong store nếu có thay đổi file ảnh
+              if (this.file && userData.profilePicture) {
+                await this.$store.dispatch("updateUserAvatar", {
+                  userId: currentUser,
+                  profilePicture: userData.profilePicture
+                });
+              } else {
+                // Nếu không thay đổi avatar, chỉ cập nhật current user nếu cần
+                const currentUserId = this.$store.state.user?._id;
+                if (currentUser === currentUserId) {
+                  this.$store.commit("SET_USER", userData);
+                }
+              }
+              
               this.openEditProfile = false; // Đóng modal sau khi lưu thành công
               this.editingSuccess = "Your profile was successfully edited!";
               createToast(
@@ -218,7 +315,37 @@ export default {
   },
   watch: {
     openEditProfile(val) {
-      if (val) this.$nextTick(() => this.lockScroll()); else this.unlockScroll();
+      if (val) {
+        this.$nextTick(() => this.lockScroll());
+        // Khi modal mở, reload data để đảm bảo có thông tin mới nhất
+        this.loadUserData();
+      } else {
+        this.unlockScroll();
+      }
+    },
+    // Theo dõi thay đổi của prop id
+    id: {
+      handler(newId) {
+        if (newId) {
+          this.loadUserData();
+        }
+      },
+      immediate: false
+    },
+    // Theo dõi thay đổi trong store user (chỉ cho current user)
+    user: {
+      handler(newUser) {
+        // Chỉ cập nhật nếu đang edit current user (không có ID hoặc ID trùng với current user)
+        const currentUserId = this.$store.state.user?._id;
+        if (newUser && Object.keys(newUser).length > 0 && (!this.id || this.id === currentUserId)) {
+          this.displayName = newUser.displayName || '';
+          this.description = newUser.description || '';
+          this.birthDate = newUser.birthDate || '';
+          this.hobbies = newUser.hobbies || '';
+        }
+      },
+      deep: true,
+      immediate: false
     }
   },
   mounted() {
@@ -263,5 +390,6 @@ export default {
 .pe-btn-secondary { background:#e4e6eb; color:#111; border:none; padding:6px 12px; font-size:.75rem; font-weight:600; border-radius:6px; cursor:pointer; }
 .pe-btn-secondary:hover { background:#d8dadf; }
 .pe-error { background:#ffe5e5; color:#b80000; border:1px solid #ffb3b3; padding:8px 12px; border-radius:6px; font-size:.75rem; font-weight:500; }
+.pe-loading { display:flex; align-items:center; gap:12px; justify-content:center; padding:20px; color:#666; font-size:.9rem; }
 @media (max-width: 720px) { .pe-modal { max-width:100%; max-height:calc(100vh - 40px); } .pe-header { padding:14px 48px 10px; } .pe-body { padding:16px 20px 24px; } .pe-overlay { padding:0 12px; } }
 </style>

@@ -13,7 +13,15 @@
             <ProfileImage :id="post.userId" />
           </div>
           <div class="post__content-wrapper">
-            <PostDisplayName :id="post.userId" />
+            <div class="post-header">
+              <PostDisplayName :id="post.userId" />
+              <PostActions 
+                :post="post" 
+                @edit-post="openEditModal"
+                @delete-post="handleDeletePost"
+                @click.stop
+              />
+            </div>
             <div class="post-desc">
               <p
                 v-if="post.description"
@@ -40,6 +48,14 @@
         </div>
       </router-link>
     </div>
+
+    <!-- Edit Post Modal -->
+    <PostEditModal
+      :show="showEditModal"
+      :post="selectedPost"
+      @close="closeEditModal"
+      @save="handleSavePost"
+    />
   </div>
 </template>
 
@@ -47,6 +63,8 @@
 import { Skeletor } from "vue-skeletor";
 import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
+import PostActions from "@/components/PostActions.vue";
+import PostEditModal from "@/components/PostEditModal.vue";
 
 export default {
   name: "ProfileUserPosts",
@@ -54,6 +72,8 @@ export default {
     Skeletor,
     PostDisplayName,
     ProfileImage,
+    PostActions,
+    PostEditModal,
   },
   props: ["id"],
   data() {
@@ -64,11 +84,17 @@ export default {
       isSkeletorLoading: false,
       currentUser: false,
       expandedPosts: {},
+      showEditModal: false,
+      selectedPost: null,
     };
   },
   computed: {
     user() {
       return this.$store.state.user;
+    },
+    // Theo dõi posts từ store để tự động cập nhật
+    storePosts() {
+      return this.$store.state.posts;
     },
   },
   watch: {
@@ -78,6 +104,17 @@ export default {
         this.loadUserPosts();
       },
       immediate: false, // Đã gọi trong created()
+    },
+    // Watch posts từ store để cập nhật nếu có bài viết mới
+    storePosts: {
+      handler() {
+        // Chỉ cập nhật nếu đang xem profile của user hiện tại
+        const currentUserId = this.$store.state.user?._id;
+        if (currentUserId && this.id === currentUserId) {
+          this.loadUserPosts();
+        }
+      },
+      immediate: false,
     },
   },
   async created() {
@@ -135,6 +172,64 @@ export default {
     },
     isPostExpanded(postId) {
       return !!this.expandedPosts[postId];
+    },
+    // Post actions methods
+    openEditModal(post) {
+      this.selectedPost = post;
+      this.showEditModal = true;
+    },
+    closeEditModal() {
+      this.showEditModal = false;
+      this.selectedPost = null;
+    },
+    async handleSavePost(updatedPost) {
+      try {
+        const { editPost } = await import('@/api/posts');
+        const currentUserId = this.$store.state.user?._id;
+        
+        const postData = {
+          description: updatedPost.description,
+          file: updatedPost.file,
+          userId: currentUserId
+        };
+        
+        const response = await editPost(updatedPost._id, postData);
+        
+        if (response.status === 200) {
+          // Update the post in local posts array
+          const postIndex = this.posts.findIndex(p => p._id === updatedPost._id);
+          if (postIndex !== -1) {
+            this.posts.splice(postIndex, 1, response.data.post);
+          }
+          
+          this.closeEditModal();
+          
+          // Show success message
+          console.log('Bài viết đã được cập nhật thành công');
+        }
+      } catch (error) {
+        console.error('Error updating post:', error);
+        // Handle error (show error message to user)
+      }
+    },
+    async handleDeletePost(post) {
+      try {
+        const { deletePost } = await import('@/api/posts');
+        const currentUserId = this.$store.state.user?._id;
+        
+        const response = await deletePost(post._id, currentUserId);
+        
+        if (response.status === 200) {
+          // Remove the post from local posts array
+          this.posts = this.posts.filter(p => p._id !== post._id);
+          
+          // Show success message
+          console.log('Bài viết đã được xóa thành công');
+        }
+      } catch (error) {
+        console.error('Error deleting post:', error);
+        // Handle error (show error message to user)
+      }
     }
   },
 };
@@ -148,8 +243,9 @@ export default {
 .post { display:flex; padding:1.5rem; }
 .post__avatar :deep(img) { width:40px; height:40px; border-radius:100%; }
 .post__content-wrapper { flex:1; margin-left:1rem; display:flex; flex-direction:column; }
+.post-header { display:flex; align-items:flex-start; justify-content:space-between; width:100%; margin-bottom:0.3rem; }
 .post-desc { max-width:100%; overflow:hidden; }
-.post__content { margin-top:.5rem; font-size:.9rem; white-space:pre-wrap; word-break:break-word; line-height:1.4; transition:all .3s ease; }
+.post__content { margin-top:.5rem; font-size:.9rem; white-space:pre-wrap; word-break:break-word; line-height:1.4; transition:all .3s ease;max-width: 95%; }
 .post__content--truncated { max-height:120px; overflow:hidden; position:relative; display:-webkit-box; -webkit-line-clamp:5; line-clamp:5; -webkit-box-orient:vertical; }
 .post__content--truncated::after { content:""; position:absolute; bottom:0; left:0; width:100%; height:20px; background:linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,1)); pointer-events:none; }
 .post__content--expanded { max-height:none !important; overflow:visible !important; display:block !important; }

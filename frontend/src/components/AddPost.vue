@@ -142,7 +142,10 @@ export default {
     },
     closeModal() {
       this.removeImage();
+      this.textDescription = ''; // Reset text
+      this.fillError = false; // Reset error state
       this.openAddPost = false;
+      this.$emit('close'); // Emit close event to parent component
     },
     autoResize() {
       // Cho textarea tự giãn chiều cao, phần thân card sẽ scroll chung
@@ -177,20 +180,33 @@ export default {
           file: fileName, // null nếu không có file
         };
 
-        // Gọi addPost duy nhất với post và formData (có thể null)
-        this.$store.dispatch("addPost", { post, formData });
-  this.$store.dispatch("loadPosts");
-        this.isLoading = false;
-        this.closeModal();
-        createToast(
-          {
-            title: this.postingSuccess,
-          },
-          {
-            type: "success",
-            showIcon: true,
-          }
-        );
+        try {
+          // Gọi addPost duy nhất với post và formData (có thể null)
+          await this.$store.dispatch("addPost", { post, formData });
+          
+          this.isLoading = false;
+          this.closeModal();
+          createToast(
+            {
+              title: this.postingSuccess,
+            },
+            {
+              type: "success",
+              showIcon: true,
+            }
+          );
+        } catch (error) {
+          this.isLoading = false;
+          createToast(
+            {
+              title: "Đăng bài viết thất bại!",
+            },
+            {
+              type: "error",
+              showIcon: true,
+            }
+          );
+        }
       }
     },
   },

@@ -40,3 +40,13 @@ export const getLikesCount = (postId) =>
 
 export const getLikeStatus = (postId, userId) =>
   axios.get(`/posts/${postId}/like-status/${userId}`, { withCredentials: true });
+
+// Edit and Delete post endpoints
+export const editPost = (postId, updatedPost) =>
+  axios.put(`/posts/${postId}`, updatedPost, { withCredentials: true });
+
+export const deletePost = (postId, userId) =>
+  axios.delete(`/posts/${postId}`, { 
+    data: { userId }, 
+    withCredentials: true 
+  });

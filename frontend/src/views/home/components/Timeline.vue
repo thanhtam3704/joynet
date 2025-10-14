@@ -20,7 +20,14 @@
 
         <!-- Nội dung bài post -->
         <div class="post__user-post">
-          <PostDisplayName :id="post.userId" />
+          <div class="post-header" :class="{ 'has-actions': canShowActionsFor(post) }">
+            <PostDisplayName :id="post.userId" />
+            <PostActions 
+              :post="post" 
+              @edit-post="openEditModal"
+              @delete-post="handleDeletePost"
+            />
+          </div>
           <div class="user-post-desc">
             <p
               v-if="post.description"
@@ -84,6 +91,14 @@
         @updated="({ isLiked, likesCount }) => $store.commit('UPDATE_POST_LIKE', { postId: post._id, isLiked, likesCount })"
       />
     </div>
+
+    <!-- Edit Post Modal -->
+    <PostEditModal
+      :show="showEditModal"
+      :post="selectedPost"
+      @close="closeEditModal"
+      @save="handleSavePost"
+    />
   </div>
 </template>
 
@@ -91,19 +106,23 @@
 import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
 import LikeActionBar from "@/components/LikeActionBar.vue";
+import PostActions from "@/components/PostActions.vue";
+import PostEditModal from "@/components/PostEditModal.vue";
 import { Skeletor } from "vue-skeletor";
 import HoverUserList from '@/components/HoverUserList';
 export default {
   name: "Timeline",
-  components: { ProfileImage, Skeletor, PostDisplayName, LikeActionBar, HoverUserList },
+  components: { ProfileImage, Skeletor, PostDisplayName, LikeActionBar, HoverUserList, PostActions, PostEditModal },
   data() {
     return {
       isLoading: false,
       showPostDetail: false,
       selectedPostId: null,
       expandedPosts: {}, // Lưu trạng thái hiển thị đầy đủ của các bài post
-  likeLoading: {},
+      likeLoading: {},
       commentCounts: {}, // Cache đếm bình luận theo postId
+      showEditModal: false,
+      selectedPost: null
     };
   },
   async mounted() {
@@ -248,6 +267,60 @@ export default {
         return false;
       }
     },
+    canShowActionsFor(post) {
+      // Kiểm tra xem có hiển thị PostActions hay không
+      const currentUser = this.$store.state.user;
+      return currentUser && post && currentUser._id === post.userId;
+    },
+    // Post actions methods
+    openEditModal(post) {
+      this.selectedPost = post;
+      this.showEditModal = true;
+    },
+    closeEditModal() {
+      this.showEditModal = false;
+      this.selectedPost = null;
+    },
+    async handleSavePost(updatedPost) {
+      try {
+        const currentUserId = this.$store.state.user?._id;
+        
+        const postData = {
+          description: updatedPost.description,
+          file: updatedPost.file,
+          userId: currentUserId
+        };
+        
+        await this.$store.dispatch('editPost', {
+          postId: updatedPost._id,
+          updatedPost: postData
+        });
+        
+        this.closeEditModal();
+        
+        // Show success message (you might want to add a notification system)
+        console.log('Bài viết đã được cập nhật thành công');
+      } catch (error) {
+        console.error('Error updating post:', error);
+        // Handle error (show error message to user)
+      }
+    },
+    async handleDeletePost(post) {
+      try {
+        const currentUserId = this.$store.state.user?._id;
+        
+        await this.$store.dispatch('deletePost', {
+          postId: post._id,
+          userId: currentUserId
+        });
+        
+        // Show success message
+        console.log('Bài viết đã được xóa thành công');
+      } catch (error) {
+        console.error('Error deleting post:', error);
+        // Handle error (show error message to user)
+      }
+    }
   },
 };
 </script>
@@ -279,10 +352,23 @@ export default {
   transform: translate(0, -3px);
 }
 
+.user-post-img {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+}
+
+.user-post-img img {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .text-post__img {
-  width: 54px;
-  height: 54px;
-  border-radius: 35%;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
   margin-right: 1rem;
 }
 
@@ -290,7 +376,7 @@ export default {
   display: flex;
   justify-content: flex-start;
   width: 100%;
-  padding: 1.5rem;
+  padding: 1.5rem 1.5rem 0 1.5rem;
 }
 
 .user-post-desc {
@@ -302,33 +388,42 @@ export default {
 
 .post__user-post {
   flex: 1;
-  width: calc(100% - 4rem);
+  width: calc(100% - 70px);
   overflow: hidden;
-  margin-right: 3rem;
   margin-left: 1rem;
   box-sizing: border-box;
+}
 
+.post-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+
+/* Khi có PostActions (3 chấm), giảm khoảng cách */
+.post-header.has-actions {
+  margin-bottom: 0.5rem;
 }
 
 .post__user-post a {
-  
   font-weight: bold;
   font-size: 1rem;
 }
 
 .post__content {
-  margin-top: 0.5rem;
+  margin-top: 0;
   font-size: 0.9rem;
   white-space: pre-wrap;
   word-wrap: break-word;
   word-break: break-word;
   overflow-wrap: break-word;
   line-height: 1.4;
-  max-width: 100%;
+  max-width: 95%;
   font-family: inherit;
   letter-spacing: normal;
   word-spacing: normal;
-
   transition: all 0.3s ease;
 }
 
@@ -437,7 +532,7 @@ export default {
 }
 
 .image-post__img {
-  width: 100%;
+  width: 95%;
   height: 100%;
   border-radius: 7px;
   max-height: 350px;
@@ -460,10 +555,8 @@ export default {
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 0.5rem 0;
-  margin: 0 1rem;
-  border-top: 1px solid #e0e0e0;
-  border-bottom: 1px solid #e0e0e0;
+  /* padding: 0;
+  margin: 0; */
 }
 
 .action-btn {
