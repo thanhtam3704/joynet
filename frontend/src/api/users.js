@@ -17,3 +17,12 @@ export const followUser = (id, userId) =>
 
 export const unfollowUser = (id, userId) =>
   axios.put(`/users/${id}/unfollow`, { userId }, { withCredentials: true });
+
+export const changePassword = (id, currentPassword, newPassword) =>
+  axios.put(`/users/${id}/change-password`, 
+    { currentPassword, newPassword }, 
+    { withCredentials: true }
+  );
+
+export const updateProfile = (id, data) =>
+  axios.put(`/users/${id}/edit`, data, { withCredentials: true });

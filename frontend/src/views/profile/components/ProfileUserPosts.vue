@@ -243,7 +243,7 @@ export default {
 .post { display:flex; padding:1.5rem; }
 .post__avatar :deep(img) { width:40px; height:40px; border-radius:100%; }
 .post__content-wrapper { flex:1; margin-left:1rem; display:flex; flex-direction:column; }
-.post-header { display:flex; align-items:flex-start; justify-content:space-between; width:100%; margin-bottom:0.3rem; }
+.post-header { display:flex; align-items:flex-start; justify-content:space-between; width:100%; margin-bottom: -1rem; }
 .post-desc { max-width:100%; overflow:hidden; }
 .post__content { margin-top:.5rem; font-size:.9rem; white-space:pre-wrap; word-break:break-word; line-height:1.4; transition:all .3s ease;max-width: 95%; }
 .post__content--truncated { max-height:120px; overflow:hidden; position:relative; display:-webkit-box; -webkit-line-clamp:5; line-clamp:5; -webkit-box-orient:vertical; }

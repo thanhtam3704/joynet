@@ -53,10 +53,10 @@
           </div>
         </router-link>
         <!-- Settings - chưa có route, tạm thời disable -->
-        <div class="not-on-page disabled">
+        <!-- <div class="not-on-page disabled">
           <span class="material-icons w3-xxlarge nav-icon-not">settings</span>
           <span class="nav-icon">Settings</span>
-        </div>
+        </div> -->
       </div>
     </nav>
   </div>

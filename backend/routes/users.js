@@ -137,4 +137,52 @@ router.put('/:id/edit', async (req, res) => {
   }
 })
 
+//CHANGE PASSWORD
+router.put('/:id/change-password', async (req, res) => {
+  try {
+    const bcrypt = require('bcrypt')
+    const userId = sanitize(req.sanitize(req.params.id))
+    const sanitizedCurrentPassword = sanitize(req.sanitize(req.body.currentPassword))
+    const sanitizedNewPassword = sanitize(req.sanitize(req.body.newPassword))
+
+    // Validate input
+    if (!sanitizedCurrentPassword || !sanitizedNewPassword) {
+      return res.status(400).json({ error: 'Vui lòng nhập đầy đủ thông tin' })
+    }
+
+    if (sanitizedNewPassword.length < 6) {
+      return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự' })
+    }
+
+    // Find user
+    const user = await User.findById(userId)
+    if (!user) {
+      return res.status(404).json({ error: 'Người dùng không tồn tại' })
+    }
+
+    // Check if user logged in with Google
+    if (user.password === 'GOOGLE_AUTH') {
+      return res.status(400).json({ error: 'Tài khoản Google không thể đổi mật khẩu' })
+    }
+
+    // Verify current password
+    const validPassword = await bcrypt.compare(sanitizedCurrentPassword, user.password)
+    if (!validPassword) {
+      return res.status(400).json({ error: 'Mật khẩu hiện tại không đúng' })
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(10)
+    const hashedPassword = await bcrypt.hash(sanitizedNewPassword, salt)
+
+    // Update password
+    await user.updateOne({ $set: { password: hashedPassword } })
+
+    return res.status(200).json({ message: 'Đổi mật khẩu thành công' })
+  } catch (err) {
+    console.error('Change password error:', err)
+    return res.status(500).json({ error: 'Lỗi server' })
+  }
+})
+
 module.exports = router

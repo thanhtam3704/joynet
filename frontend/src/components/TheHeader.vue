@@ -115,6 +115,9 @@
           <a  href="javascript:;">Trang cá nhân</a>
         </a-menu-item>
          </router-link>
+        <a-menu-item class="menu-item">
+          <a @click="openChangePassword" href="javascript:;">Đổi mật khẩu</a>
+        </a-menu-item>
         <a-menu-item>
           <a @click="logout" href="javascript:;">Đăng xuất</a>
         </a-menu-item>
@@ -145,6 +148,12 @@
       />
     </div>
   </div>
+
+  <!-- Change Password Modal -->
+  <ChangePassword
+    v-if="showChangePassword"
+    @close="closeChangePassword"
+  />
   </header>
 </template>
 
@@ -153,6 +162,7 @@ import SyncLoader from "vue-spinner/src/SyncLoader.vue";
 import AddPost from "@/components/AddPost.vue";
 import NotificationList from "@/views/notification/components/NotificationList.vue";
 import PostDetail from "@/views/post/components/PostDetail.vue";
+import ChangePassword from "@/views/profile/components/ChangePassword.vue";
 
 export default {
   name: "TheHeader",
@@ -161,6 +171,7 @@ export default {
     AddPost,
     NotificationList,
     PostDetail,
+    ChangePassword,
   },
   props: ["currentUser"],
   data() {
@@ -181,6 +192,7 @@ export default {
       selectedCommentId: null,
       scrollToComment: false,
       notificationPollingInterval: null,
+      showChangePassword: false,
     };
   },
   computed: {
@@ -314,6 +326,14 @@ export default {
       this.selectedPostId = null;
       this.selectedCommentId = null;
       this.scrollToComment = false;
+    },
+
+    openChangePassword() {
+      this.showChangePassword = true;
+    },
+
+    closeChangePassword() {
+      this.showChangePassword = false;
     },
 
 
