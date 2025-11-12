@@ -93,6 +93,15 @@ router.get('/conversations/:conversationId/messages', verifyToken, async (req, r
     const limit = parseInt(req.query.limit) || 50;
     const skip = (page - 1) * limit;
 
+    // Nếu là temp conversation (chưa tạo), trả về mảng rỗng
+    if (conversationId.startsWith('temp_')) {
+      return res.status(200).json({
+        messages: [],
+        hasMore: false,
+        currentPage: 1
+      });
+    }
+
     // Kiểm tra user có quyền truy cập conversation này không
     const conversation = await Conversation.findOne({
       _id: conversationId,
@@ -119,6 +128,7 @@ router.get('/conversations/:conversationId/messages', verifyToken, async (req, r
       currentPage: page
     });
   } catch (error) {
+    console.error('Get messages error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -129,9 +129,11 @@ const createNotification = async (fromUserId, toUserId, type, postId = null, com
       return null;
     }
 
-    // Đối với like và follow: Kiểm tra xem thông báo đã tồn tại chưa (không giới hạn thời gian)
-    // Nếu đã có thì chỉ cập nhật thời gian, reactionType và đánh dấu chưa đọc
-    if (type === 'like' || type === 'follow') {
+    // Đối với các loại notification liên quan đến follow: Kiểm tra duplicate
+    // Bao gồm: like, follow, follow_request, follow_request_accepted, follow_request_rejected
+    const checkDuplicateTypes = ['like', 'follow', 'follow_request', 'follow_request_accepted', 'follow_request_rejected'];
+    
+    if (checkDuplicateTypes.includes(type)) {
       const existingNotification = await Notification.findOne({
         fromUser: fromUserId,
         toUser: toUserId,

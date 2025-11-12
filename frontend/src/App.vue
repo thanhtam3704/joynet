@@ -66,7 +66,6 @@ export default {
 <style scoped>
 #nav {
   width: 100%;
-  overflow-x: hidden;
   min-height: 100vh;
 }
 </style>

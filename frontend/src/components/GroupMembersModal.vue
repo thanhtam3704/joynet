@@ -8,11 +8,17 @@
         </div>
 
         <div class="modal-body">
-          <!-- Add Member Section (Only for admins) -->
-          <div v-if="isAdmin" class="add-member-section">
+          <!-- Group Full Warning -->
+          <div v-if="isAdmin && members.length >= 200" class="group-full-warning">
+            <i class="material-icons">info</i>
+            <span>Nhóm đã đạt giới hạn tối đa 200 thành viên</span>
+          </div>
+
+          <!-- Add Member Section (Only for admins and group not full) -->
+          <div v-if="isAdmin && members.length < 200" class="add-member-section">
             <button class="btn-add-member" @click="showAddMemberUI = !showAddMemberUI">
               <i class="material-icons">person_add</i>
-              <span>Thêm thành viên</span>
+              <span>Thêm thành viên ({{ members.length }}/200)</span>
             </button>
 
             <!-- Add Member UI -->
@@ -73,6 +79,7 @@
 
               <!-- Actions (Only for admins, can't remove creator) -->
               <div v-if="isAdmin && !isCreator(member._id) && member._id !== currentUserId" class="member-actions">
+                <!-- Promote button (only group creator can promote) -->
                 <button 
                   v-if="isGroupCreator && !isMemberAdmin(member._id)"
                   class="action-btn promote-btn"
@@ -82,6 +89,7 @@
                   <i class="material-icons">star</i>
                 </button>
                 
+                <!-- Remove button -->
                 <button 
                   class="action-btn remove-btn"
                   @click="confirmRemoveMember(member)"
@@ -162,12 +170,13 @@ export default {
     members() {
       return this.conversation.participants || [];
     },
-    isAdmin() {
-      return this.conversation.admins?.includes(this.currentUserId);
-    },
     isGroupCreator() {
       return this.conversation.createdBy?._id === this.currentUserId || 
              this.conversation.createdBy === this.currentUserId;
+    },
+    isAdmin() {
+      // Trưởng nhóm hoặc có trong danh sách admins
+      return this.isGroupCreator || this.conversation.admins?.includes(this.currentUserId);
     },
     filteredAvailableFriends() {
       if (!this.searchQuery.trim()) {
@@ -235,11 +244,13 @@ export default {
           this.$emit('members-updated', response.data);
           this.showAddMemberUI = false;
           this.searchQuery = '';
+          // Refresh conversation TRƯỚC để cập nhật members list
+          await this.refreshConversation();
+          // Sau đó mới load lại available friends
           await this.loadAvailableFriends();
         }
       } catch (error) {
         console.error('Add member error:', error);
-        alert('Không thể thêm thành viên. Vui lòng thử lại!');
       }
     },
 
@@ -258,11 +269,13 @@ export default {
         if (response.status === 200) {
           this.$emit('member-removed', this.memberToRemove._id);
           this.memberToRemove = null;
+          // Refresh conversation TRƯỚC để cập nhật members list
+          await this.refreshConversation();
+          // Sau đó mới load lại available friends
           await this.loadAvailableFriends();
         }
       } catch (error) {
         console.error('Remove member error:', error);
-        alert('Không thể xóa thành viên. Vui lòng thử lại!');
       }
     },
 
@@ -271,11 +284,11 @@ export default {
         const response = await GroupMessageAPI.promoteToAdmin(this.conversation._id, memberId);
         if (response.status === 200) {
           this.$emit('member-promoted', memberId);
-          alert('Đã thăng cấp thành viên làm quản trị viên!');
+          // Refresh conversation để cập nhật badge ngay
+          await this.refreshConversation();
         }
       } catch (error) {
         console.error('Promote member error:', error);
-        alert('Không thể thăng cấp thành viên. Vui lòng thử lại!');
       }
     },
 
@@ -293,7 +306,6 @@ export default {
         }
       } catch (error) {
         console.error('Leave group error:', error);
-        alert(error.response?.data?.error || 'Không thể rời nhóm. Vui lòng thử lại!');
       }
     },
 
@@ -305,8 +317,12 @@ export default {
     console.log('👥 [GroupMembersModal] Mounted');
     console.log('👥 [GroupMembersModal] Conversation:', this.conversation);
     console.log('👥 [GroupMembersModal] Members:', this.members);
-    console.log('👥 [GroupMembersModal] Is Admin:', this.isAdmin);
     console.log('👥 [GroupMembersModal] Current User ID:', this.currentUserId);
+    console.log('👥 [GroupMembersModal] Created By:', this.conversation.createdBy);
+    console.log('👥 [GroupMembersModal] Admins:', this.conversation.admins);
+    console.log('👥 [GroupMembersModal] Is Group Creator:', this.isGroupCreator);
+    console.log('👥 [GroupMembersModal] Is Admin:', this.isAdmin);
+    console.log('🔍 [Debug] Should show add member button:', this.isAdmin);
     
     // Check if participants are populated (have displayName property)
     const firstParticipant = this.members[0];
@@ -321,6 +337,7 @@ export default {
       await this.refreshConversation();
     }
     
+    // Load available friends if user is admin
     if (this.isAdmin) {
       this.loadAvailableFriends();
     }
@@ -413,6 +430,23 @@ export default {
 .add-member-section {
   border-bottom: 1px solid var(--gray-200);
   padding-bottom: 1rem;
+}
+
+.group-full-warning {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(255, 152, 0, 0.1) 0%, rgba(255, 193, 7, 0.1) 100%);
+  border: 2px solid rgba(255, 152, 0, 0.3);
+  border-radius: var(--radius-lg);
+  color: #ff9800;
+  font-weight: 600;
+  margin-bottom: 1rem;
+}
+
+.group-full-warning i {
+  font-size: 24px;
 }
 
 .btn-add-member {

@@ -33,3 +33,16 @@ export const changePassword = (id, currentPassword, newPassword) =>
 
 export const updateProfile = (id, data) =>
   axios.put(`/users/${id}/edit`, data, { withCredentials: true });
+
+export const getFollowingUsers = () =>
+  axios.get('/users/following', { 
+    withCredentials: true,
+    headers: { token: localStorage.getItem('token') }
+  });
+
+export const getSuggestedUsers = (limit = 10) =>
+  axios.get('/users/suggestions', { 
+    withCredentials: true,
+    headers: { token: localStorage.getItem('token') },
+    params: { limit }
+  });

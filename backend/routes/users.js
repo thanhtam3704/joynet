@@ -20,6 +20,67 @@ const verifyToken = (req, res, next) => {
   }
 };
 
+//GET FOLLOWING USERS
+router.get('/following', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const currentUser = await User.findById(userId);
+    
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // followings là array of user IDs, cần fetch từng user
+    const followingIds = currentUser.followings || [];
+    
+    if (followingIds.length === 0) {
+      return res.status(200).json([]);
+    }
+    
+    const followingUsers = await User.find({
+      _id: { $in: followingIds }
+    }).select('displayName email profilePicture isOnline lastSeen');
+    
+    console.log('Following users found:', followingUsers.length);
+    return res.status(200).json(followingUsers);
+  } catch (err) {
+    console.error('Get following users error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+//GET SUGGESTED USERS
+router.get('/suggestions', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = parseInt(req.query.limit) || 30; // Default 30 để có đủ để random
+    
+    const currentUser = await User.findById(userId);
+    if (!currentUser) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const following = currentUser.followings || [];
+    const followingIds = following.map(id => id.toString());
+    
+    // Thêm current user vào list để exclude
+    const excludeIds = [...followingIds, userId.toString()];
+    
+    const suggestedUsers = await User.find({
+      _id: { $nin: excludeIds }
+    })
+    .select('displayName email profilePicture isOnline lastSeen followers')
+    .limit(limit)
+    .sort({ 'followers': -1 });
+    
+    console.log('Suggested users found:', suggestedUsers.length, 'for limit:', limit);
+    return res.status(200).json(suggestedUsers);
+  } catch (err) {
+    console.error('Get suggested users error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 //GET SUGGESTED CONTACTS (following + recent contacts)
 router.get('/suggested/contacts', verifyToken, async (req, res) => {
   try {

@@ -9,6 +9,9 @@
         <div class="home__post">
           <Post />
         </div>
+        <div class="home__following">
+          <FollowingSuggestions />
+        </div>
         <div class="home__timeline">
           <Timeline ref="timeline" @show-post-detail="openModal" />
         </div>
@@ -60,6 +63,7 @@ import PostDetail from "@/views/post/components/PostDetail.vue";
 import Post from "./components/Post.vue";
 import NewMessageModal from "@/components/NewMessageModal.vue";
 import ChatPopupsManager from "@/components/ChatPopupsManager.vue";
+import FollowingSuggestions from "@/components/FollowingSuggestions.vue";
 
 export default {
   name: "Home",
@@ -73,6 +77,7 @@ export default {
     Post,
     NewMessageModal,
     ChatPopupsManager,
+    FollowingSuggestions,
   },
   data() {
     return {
@@ -137,7 +142,7 @@ export default {
 <style scoped>
 .home__content {
   display: grid;
-  grid-template-columns: 3fr 10fr 4fr;
+  grid-template-columns: 3fr 10fr 3fr;
   grid-gap: 2rem;
   padding: 0 1rem;
 }
@@ -147,7 +152,6 @@ export default {
   display: flex;
   flex-direction: column;
   width: 100%;
-  min-height: 800px;
   margin-top: 5.5rem;
 }
 
@@ -162,13 +166,21 @@ export default {
 }
 
 .home__right-sidebar {
+  position: sticky;
+  top: 5rem;
+  height: fit-content;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
   margin-right: 1rem;
-  margin-top: 5rem;
   animation: fadeIn 0.5s ease-out 0.2s both;
 }
 
 .home__left-sidebar {
-  margin-top: 5rem;
+  position: sticky;
+  top: 5rem;
+  height: fit-content;
+  max-height: calc(100vh - 6rem);
+  overflow-y: auto;
   animation: fadeIn 0.5s ease-out 0.15s both;
 }
 
@@ -263,22 +275,14 @@ export default {
 /* Tablet - 768px and below */
 @media (max-width: 768px) {
   .home__content {
-    grid-template-columns: 1fr;
-    grid-gap: 0;
-    padding: 0 1rem;
-  }
-
-  .home__left-sidebar,
-  .home__right-sidebar {
-    display: none; /* Ẩn sidebar trên tablet */
+    grid-template-columns: 1fr 3fr 1fr;
+    grid-gap: 0.5rem;
+    padding: 0 0.5rem;
   }
 
   .home__container {
     margin-top: 4rem;
     width: 100%;
-    max-width: 600px;
-    margin-left: auto;
-    margin-right: auto;
   }
 
   .home__post {

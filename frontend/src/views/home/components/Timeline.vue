@@ -1343,11 +1343,10 @@ export default {
 
 .end-message {
   text-align: center;
-  padding: 2rem 0;
+  padding: 0.5rem 0;
   font-size: 1rem;
   color: var(--gray-500);
   font-weight: 500;
-  margin-bottom: 2rem;
 }
 
 .end-message span {
@@ -1356,5 +1355,10 @@ export default {
   background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
   border-radius: var(--radius-xl);
   border: 1px solid rgba(102, 126, 234, 0.2);
+}
+
+.scroll-trigger {
+  height: 1px;
+  width: 100%;
 }
 </style>

@@ -133,9 +133,6 @@ export default {
   flex-direction: column;
   width: 100%;
   height: fit-content;
-  position: sticky;
-  top: 100px;
-  z-index: 1;
 }
 
 .left-sidebar__menu {

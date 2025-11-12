@@ -29,8 +29,13 @@
             <i class="material-icons group-icon-inline">groups</i>
             {{ conversation.groupName }}
           </span>
-          <!-- User Name -->
-          <span v-else class="chat-user-name">
+          <!-- User Name - Clickable -->
+          <span 
+            v-else 
+            class="chat-user-name clickable-name" 
+            @click.stop="goToProfile"
+            title="Xem trang cá nhân"
+          >
             {{ conversation?.participant?.displayName || conversation?.participant?.email || 'Người dùng' }}
           </span>
           
@@ -494,6 +499,17 @@ export default {
       this.closeChat()
     },
 
+    goToProfile() {
+      // Chỉ cho phép đi đến profile nếu không phải group chat
+      if (this.conversation?.isGroup) return
+      
+      const userId = this.conversation?.participant?._id
+      if (userId) {
+        // Điều hướng đến trang profile
+        this.$router.push(`/profile/${userId}`)
+      }
+    },
+
     scrollToBottom() {
       // Sử dụng messagesEnd anchor để scroll
       if (this.$refs.messagesEnd) {
@@ -638,6 +654,19 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.clickable-name {
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 2px 6px;
+  margin: -2px -6px;
+  border-radius: 4px;
+}
+
+.clickable-name:hover {
+  background: rgba(255, 255, 255, 0.2);
+  text-decoration: underline;
 }
 
 .chat-online-status {
