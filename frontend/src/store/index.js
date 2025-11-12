@@ -7,6 +7,9 @@ export default createStore({
   state: {
     user: {},
     posts: [],
+    postsPage: 1,
+    postsHasMore: true,
+    postsLoading: false,
     isUserLoaded: false, // Thêm flag để tránh load user nhiều lần
     usersById: {}, // Cache user theo id để tránh N+1 requests
     // Message related state
@@ -61,9 +64,11 @@ export default createStore({
         console.error("Load user error:", error);
       }
     },
-    async loadPosts({ commit, dispatch, state }) {
+    async loadPosts({ commit, dispatch, state }, { page = 1, append = false } = {}) {
       try {
-  // Đảm bảo user đã được load trước
+        commit('SET_POSTS_LOADING', true);
+        
+        // Đảm bảo user đã được load trước
         if (!state.isUserLoaded) {
           await dispatch("loadUser");
         }
@@ -71,22 +76,26 @@ export default createStore({
         const currentUser = state.user?._id;
         if (!currentUser) {
           console.error("No current user found");
+          commit('SET_POSTS_LOADING', false);
           return;
         }
 
-        const responsePosts = await postsApi.getTimeline(currentUser);
+        const responsePosts = await postsApi.getTimeline(currentUser, page, 6);
         if (responsePosts.status === 200) {
-          const posts = responsePosts.data || [];
+          const data = responsePosts.data;
+          const posts = data.posts || [];
 
           // Enrich each post with like status/count via like-status endpoint
           const enriched = await Promise.all(
             posts.map(async (p) => {
               try {
-                const res = await postsApi.getLikeStatus(p._id, currentUser);
+                const res = await postsApi.getReactionStatus(p._id, currentUser);
                 if (res.status === 200) {
                   return {
                     ...p,
-                    isLiked: !!res.data?.isLiked,
+                    userReaction: res.data?.userReaction || null,
+                    reactionsCount: res.data?.reactionsCount || {},
+                    isLiked: !!res.data?.userReaction,
                     likesCount:
                       typeof res.data?.likesCount === "number"
                         ? res.data.likesCount
@@ -98,6 +107,8 @@ export default createStore({
               }
               return {
                 ...p,
+                userReaction: null,
+                reactionsCount: {},
                 isLiked: Array.isArray(p.likes)
                   ? p.likes.includes(currentUser)
                   : false,
@@ -106,13 +117,19 @@ export default createStore({
             })
           );
 
-          const sortedPosts = enriched.sort((p1, p2) => {
-            return new Date(p2.createdAt) - new Date(p1.createdAt);
-          });
-          commit("SET_POSTS", sortedPosts);
+          if (append) {
+            commit("APPEND_POSTS", enriched);
+          } else {
+            commit("SET_POSTS", enriched);
+          }
+          
+          commit("SET_POSTS_PAGE", page);
+          commit("SET_POSTS_HAS_MORE", data.hasMore || false);
         }
       } catch (error) {
         console.error("Load posts error:", error);
+      } finally {
+        commit('SET_POSTS_LOADING', false);
       }
     },
     async addPost({ commit, dispatch }, { post, formData = null }) {
@@ -365,6 +382,17 @@ export default createStore({
       if (currentUser && currentUser._id === userId) {
         await dispatch('loadUser');
       }
+    },
+    
+    // Action để reload timeline (gọi từ logo click)
+    async reloadTimeline({ dispatch }) {
+      console.log('🔄 Reloading timeline from store...');
+      try {
+        // Reset về trang 1 và load lại posts
+        await dispatch('loadPosts', { page: 1, append: false });
+      } catch (error) {
+        console.error('Reload timeline error:', error);
+      }
     }
   },
   mutations: {
@@ -382,21 +410,49 @@ export default createStore({
     SET_POSTS(state, posts) {
       state.posts = posts;
     },
+    APPEND_POSTS(state, posts) {
+      state.posts = [...state.posts, ...posts];
+    },
+    SET_POSTS_PAGE(state, page) {
+      state.postsPage = page;
+    },
+    SET_POSTS_HAS_MORE(state, hasMore) {
+      state.postsHasMore = hasMore;
+    },
+    SET_POSTS_LOADING(state, loading) {
+      state.postsLoading = loading;
+    },
     ADD_POST(state, post) {
       // Thêm bài viết mới vào đầu danh sách (hiển thị mới nhất trước)
       state.posts.unshift(post);
     },
-    UPDATE_POST_LIKE(state, { postId, isLiked, likesCount }) {
+    UPDATE_POST_LIKE(state, { postId, isLiked, likesCount, userReaction, reactionsCount }) {
       const idx = state.posts.findIndex((p) => p._id === postId);
       if (idx !== -1) {
-        state.posts[idx] = {
+        // Create completely new object to trigger reactivity
+        const updatedPost = {
           ...state.posts[idx],
           isLiked,
+          userReaction: userReaction || null,
+          reactionsCount: { ...(reactionsCount || {}) }, // Deep clone
           likesCount:
             typeof likesCount === "number"
               ? likesCount
               : state.posts[idx].likesCount || 0,
         };
+        
+        // Replace the entire array to ensure Vue 3 tracks the change
+        state.posts = [
+          ...state.posts.slice(0, idx),
+          updatedPost,
+          ...state.posts.slice(idx + 1)
+        ];
+        
+        console.log('Store UPDATE_POST_LIKE:', {
+          postId,
+          updatedPost,
+          reactionsCount: updatedPost.reactionsCount
+        });
       }
     },
     UPDATE_POST(state, { postId, updatedData }) {

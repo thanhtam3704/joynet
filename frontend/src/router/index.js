@@ -84,6 +84,18 @@ const routes = [
     beforeEnter: requireAuth,
   },
   {
+    path: "/settings",
+    name: "Settings",
+    component: () => import("@/views/settings/Settings.vue"),
+    beforeEnter: requireAuth,
+  },
+  {
+    path: "/follow-requests",
+    name: "FollowRequests",
+    component: () => import("@/components/FollowRequestsList.vue"),
+    beforeEnter: requireAuth,
+  },
+  {
     path: "/auth/google/success",
     name: "GoogleAuthSuccess",
     component: () => import("@/views/auth/GoogleAuthSuccess.vue"),

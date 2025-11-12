@@ -1,87 +1,93 @@
 <template>
-  <div v-if="openChangePassword" class="cp-overlay" @click.self="closeModal">
-    <div class="cp-modal" role="dialog" aria-modal="true" aria-labelledby="cp-title">
-      <div class="cp-header">
-        <h2 id="cp-title">Đổi mật khẩu</h2>
-        <button class="cp-close" @click="closeModal" aria-label="Đóng">&times;</button>
+  <div class="change-password-container">
+    <!-- <div class="section-header">
+      <h2>Đổi mật khẩu</h2>
+      <p>Cập nhật mật khẩu của bạn để bảo mật tài khoản</p>
+    </div> -->
+    
+    <form class="change-password-form" @submit.prevent="handleChangePassword">
+      <div class="password-fields">
+        <label class="form-field">
+          <span class="field-label">Mật khẩu hiện tại</span>
+          <div class="password-input-wrapper">
+            <input 
+              :type="showCurrentPassword ? 'text' : 'password'" 
+              v-model.trim="currentPassword" 
+              class="form-input" 
+              placeholder="Nhập mật khẩu hiện tại"
+              autocomplete="current-password"
+            />
+            <button 
+              type="button" 
+              class="toggle-password-btn" 
+              @click="showCurrentPassword = !showCurrentPassword"
+              :aria-label="showCurrentPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            >
+              <span class="material-icons">{{ showCurrentPassword ? 'visibility_off' : 'visibility' }}</span>
+            </button>
+          </div>
+        </label>
+        
+        <label class="form-field">
+          <span class="field-label">Mật khẩu mới</span>
+          <div class="password-input-wrapper">
+            <input 
+              :type="showNewPassword ? 'text' : 'password'" 
+              v-model.trim="newPassword" 
+              class="form-input" 
+              placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
+              autocomplete="new-password"
+            />
+            <button 
+              type="button" 
+              class="toggle-password-btn" 
+              @click="showNewPassword = !showNewPassword"
+              :aria-label="showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            >
+              <span class="material-icons">{{ showNewPassword ? 'visibility_off' : 'visibility' }}</span>
+            </button>
+          </div>
+        </label>
+        
+        <label class="form-field">
+          <span class="field-label">Xác nhận mật khẩu mới</span>
+          <div class="password-input-wrapper">
+            <input 
+              :type="showConfirmPassword ? 'text' : 'password'" 
+              v-model.trim="confirmPassword" 
+              class="form-input" 
+              placeholder="Nhập lại mật khẩu mới"
+              autocomplete="new-password"
+            />
+            <button 
+              type="button" 
+              class="toggle-password-btn" 
+              @click="showConfirmPassword = !showConfirmPassword"
+              :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
+            >
+              <span class="material-icons">{{ showConfirmPassword ? 'visibility_off' : 'visibility' }}</span>
+            </button>
+          </div>
+        </label>
       </div>
-      <form class="cp-body" @submit.prevent="handleChangePassword">
-        <div class="cp-section">
-          <label class="cp-field">
-            <span class="cp-field__label">Mật khẩu hiện tại</span>
-            <div class="cp-password-wrapper">
-              <input 
-                :type="showCurrentPassword ? 'text' : 'password'" 
-                v-model.trim="currentPassword" 
-                class="cp-input" 
-                placeholder="Nhập mật khẩu hiện tại"
-                autocomplete="current-password"
-              />
-              <button 
-                type="button" 
-                class="cp-toggle-password" 
-                @click="showCurrentPassword = !showCurrentPassword"
-                :aria-label="showCurrentPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-              >
-                {{ showCurrentPassword ? '👁️' : '👁️‍🗨️' }}
-              </button>
-            </div>
-          </label>
-          
-          <label class="cp-field">
-            <span class="cp-field__label">Mật khẩu mới</span>
-            <div class="cp-password-wrapper">
-              <input 
-                :type="showNewPassword ? 'text' : 'password'" 
-                v-model.trim="newPassword" 
-                class="cp-input" 
-                placeholder="Nhập mật khẩu mới (tối thiểu 6 ký tự)"
-                autocomplete="new-password"
-              />
-              <button 
-                type="button" 
-                class="cp-toggle-password" 
-                @click="showNewPassword = !showNewPassword"
-                :aria-label="showNewPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-              >
-                {{ showNewPassword ? '👁️' : '👁️‍🗨️' }}
-              </button>
-            </div>
-          </label>
-          
-          <label class="cp-field">
-            <span class="cp-field__label">Xác nhận mật khẩu mới</span>
-            <div class="cp-password-wrapper">
-              <input 
-                :type="showConfirmPassword ? 'text' : 'password'" 
-                v-model.trim="confirmPassword" 
-                class="cp-input" 
-                placeholder="Nhập lại mật khẩu mới"
-                autocomplete="new-password"
-              />
-              <button 
-                type="button" 
-                class="cp-toggle-password" 
-                @click="showConfirmPassword = !showConfirmPassword"
-                :aria-label="showConfirmPassword ? 'Ẩn mật khẩu' : 'Hiện mật khẩu'"
-              >
-                {{ showConfirmPassword ? '👁️' : '👁️‍🗨️' }}
-              </button>
-            </div>
-          </label>
-        </div>
-        
-        <div v-if="errorMessage" class="cp-error">{{ errorMessage }}</div>
-        
-        <div class="cp-footer">
-          <button type="button" class="cp-btn cp-btn-ghost" @click="closeModal">Hủy</button>
-          <button type="submit" class="cp-btn cp-btn-primary" :disabled="isLoading || !canSubmit">
-            <span v-if="!isLoading">Đổi mật khẩu</span>
-            <sync-loader v-else :color="'#fff'" size="8" />
-          </button>
-        </div>
-      </form>
-    </div>
+      
+      <div v-if="errorMessage" class="error-message">
+        <span class="material-icons">error</span>
+        <span>{{ errorMessage }}</span>
+      </div>
+      
+      <div v-if="successMessage" class="success-message">
+        <span class="material-icons">check_circle</span>
+        <span>{{ successMessage }}</span>
+      </div>
+      
+      <div class="form-actions">
+        <button type="submit" class="btn-primary" :disabled="isLoading || !canSubmit">
+          <span v-if="!isLoading">Đổi mật khẩu</span>
+          <sync-loader v-else :color="'#fff'" size="8" />
+        </button>
+      </div>
+    </form>
   </div>
 </template>
 
@@ -103,9 +109,9 @@ export default {
       showCurrentPassword: false,
       showNewPassword: false,
       showConfirmPassword: false,
-      openChangePassword: true,
       isLoading: false,
       errorMessage: "",
+      successMessage: "",
     };
   },
   computed: {
@@ -119,13 +125,9 @@ export default {
     },
   },
   methods: {
-    closeModal() {
-      this.openChangePassword = false;
-      this.$emit("close");
-    },
-    
     async handleChangePassword() {
       this.errorMessage = "";
+      this.successMessage = "";
 
       // Validate
       if (!this.currentPassword || !this.newPassword || !this.confirmPassword) {
@@ -165,17 +167,23 @@ export default {
         );
 
         if (response.status === 200) {
+          this.successMessage = response.data.message || "Đổi mật khẩu thành công!";
+          
           createToast(
             {
-              title: response.data.message || "Đổi mật khẩu thành công!",
+              title: this.successMessage,
             },
             {
               type: "success",
               showIcon: true,
+              timeout: 3000
             }
           );
           
-          this.closeModal();
+          // Reset form
+          this.currentPassword = "";
+          this.newPassword = "";
+          this.confirmPassword = "";
         }
       } catch (error) {
         console.error("Change password error:", error);
@@ -187,214 +195,219 @@ export default {
       }
     },
   },
-  watch: {
-    openChangePassword(val) {
-      if (!val) {
-        this.$emit("close");
-      }
-    },
-  },
 };
 </script>
 
 <style lang="scss" scoped>
-.cp-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 100px 24px 70px;
-  z-index: 2000;
-  overflow: hidden;
+.change-password-container {
+  max-width: 700px;
 }
 
-.cp-modal {
-  width: 100%;
-  max-width: 500px;
-  background: #fff;
+// .section-header {
+//   margin-bottom: 24px;
+// }
+
+// .section-header h2 {
+//   font-size: 20px;
+//   font-weight: 600;
+//   color: #262626;
+//   margin-bottom: 6px;
+// }
+
+// .section-header p {
+//   font-size: 14px;
+//   color: #8e8e8e;
+//   margin: 0;
+// }
+
+.change-password-form {
+  background: #fafafa;
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
-  display: flex;
-  flex-direction: column;
-  max-height: calc(100vh - 120px);
-}
-
-.cp-header {
-  position: relative;
-  padding: 16px 56px 12px 56px;
-  border-bottom: 1px solid #eee;
-  text-align: center;
-}
-
-.cp-header h2 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  margin: 0;
-}
-
-.cp-close {
-  position: absolute;
-  left: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 36px;
-  height: 36px;
-  border: none;
-  background: #f0f2f5;
-  border-radius: 50%;
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.cp-close:hover {
-  background: #e4e6eb;
-}
-
-.cp-body {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px 32px 24px;
+  padding: 24px;
+  border: 1px solid #efefef;
   display: flex;
   flex-direction: column;
   gap: 20px;
 }
 
-.cp-section {
+.password-fields {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
 }
 
-.cp-field {
+.form-field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  position: relative;
+  gap: 8px;
 }
 
-.cp-field__label {
-  font-size: 0.85rem;
+.field-label {
+  font-size: 13px;
   font-weight: 600;
-  color: #555;
+  color: #262626;
+  margin-bottom: 2px;
 }
 
-.cp-password-wrapper {
+.password-input-wrapper {
   position: relative;
+  background: white;
+  border-radius: 10px;
+  border: 1px solid #efefef;
+  transition: all 0.2s ease;
 }
 
-.cp-input {
+.password-input-wrapper:focus-within {
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.form-input {
   width: 100%;
-  border: 1px solid #ced0d4;
-  border-radius: 8px;
-  background: #f5f6f7;
-  padding: 10px 40px 10px 12px;
-  font-size: 0.9rem;
+  padding: 12px 48px 12px 16px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
   font-family: inherit;
-  transition: border-color 0.15s, background 0.15s;
+  color: #262626;
+  background: transparent;
+  transition: all 0.2s ease;
 }
 
-.cp-input:focus {
+.form-input::placeholder {
+  color: #8e8e8e;
+}
+
+.form-input:focus {
   outline: none;
-  border-color: #1877f2;
-  background: #fff;
-  box-shadow: 0 0 0 2px rgba(24, 119, 242, 0.15);
 }
 
-.cp-toggle-password {
+.toggle-password-btn {
   position: absolute;
-  right: 8px;
+  right: 12px;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
   padding: 4px;
-  font-size: 18px;
-  opacity: 0.6;
-  transition: opacity 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #8e8e8e;
+  transition: color 0.2s ease;
 }
 
-.cp-toggle-password:hover {
-  opacity: 1;
+.toggle-password-btn:hover {
+  color: #667eea;
 }
 
-.cp-footer {
+.toggle-password-btn .material-icons {
+  font-size: 20px;
+}
+
+.error-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: 10px;
+  color: #dc2626;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.error-message .material-icons {
+  font-size: 20px;
+  color: #dc2626;
+}
+
+.success-message {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: white;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 10px;
+  color: #16a34a;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.success-message .material-icons {
+  font-size: 20px;
+  color: #16a34a;
+}
+
+.form-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 12px;
   padding-top: 8px;
-  border-top: 1px solid #eee;
 }
 
-.cp-btn {
+.btn-primary {
+  padding: 12px 32px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   border: none;
-  border-radius: 6px;
-  padding: 8px 16px;
-  font-size: 0.85rem;
+  border-radius: 10px;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  display: inline-flex;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  min-width: 160px;
+  display: flex;
   align-items: center;
-  gap: 6px;
-}
-
-.cp-btn-primary {
-  background: #1877f2;
-  color: #fff;
-  min-width: 120px;
   justify-content: center;
 }
 
-.cp-btn-primary:disabled {
+.btn-primary:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(102, 126, 234, 0.4);
+}
+
+.btn-primary:not(:disabled):active {
+  transform: translateY(0);
+}
+
+.btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.cp-btn-primary:not(:disabled):hover {
-  background: #166fe5;
+.material-icons {
+  font-family: 'Material Icons';
+  font-weight: normal;
+  font-style: normal;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
 }
 
-.cp-btn-ghost {
-  background: #e4e6eb;
-  color: #111;
-}
-
-.cp-btn-ghost:hover {
-  background: #d8dadf;
-}
-
-.cp-error {
-  background: #ffe5e5;
-  color: #b80000;
-  border: 1px solid #ffb3b3;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-@media (max-width: 720px) {
-  .cp-modal {
+@media (max-width: 640px) {
+  .change-password-container {
     max-width: 100%;
-    max-height: calc(100vh - 40px);
   }
   
-  .cp-header {
-    padding: 14px 48px 10px;
+  .change-password-form {
+    padding: 20px;
   }
   
-  .cp-body {
-    padding: 16px 20px 24px;
+  .form-input {
+    font-size: 14px;
   }
   
-  .cp-overlay {
-    padding: 0 12px;
+  .btn-primary {
+    width: 100%;
   }
 }
 </style>

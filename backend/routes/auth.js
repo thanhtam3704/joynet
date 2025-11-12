@@ -160,16 +160,31 @@ router.post("/login", async (req, res) => {
 
 router.get("/user", async (req, res) => {
   let token = req.headers.token;
+  
+  console.log('GET /user - Token received:', token ? 'Yes' : 'No');
+
+  if (!token) {
+    return res.status(401).json({
+      message: "No token provided",
+    });
+  }
 
   jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, async (err, decoded) => {
     if (err) {
+      console.error('JWT verification error:', err.message);
       return res.status(401).json({
         message: "unauthorized",
+        error: err.message
       });
     }
 
+    console.log('Token verified, userId:', decoded.userId);
+
     await User.findOne({ _id: decoded.userId }, (err, user) => {
-      if (err) return console.log(err);
+      if (err) {
+        console.error('Find user error:', err);
+        return res.status(500).json({ message: "Database error" });
+      }
       return res.status(200).json({
         title: "user grabbed",
         user: user,
@@ -271,7 +286,7 @@ router.get('/google/callback',
     next();
   },
   passport.authenticate('google', { 
-    failureRedirect: 'http://localhost:8080/login?error=google_auth_failed' 
+    failureRedirect: 'http://localhost:8080/#/login?error=google_auth_failed' 
   }),
   async (req, res) => {
     try {
@@ -279,7 +294,7 @@ router.get('/google/callback',
       
       if (!req.user) {
         console.error('No user found in request after authentication');
-        return res.redirect('http://localhost:8080/login?error=no_user');
+        return res.redirect('http://localhost:8080/#/login?error=no_user');
       }
       
       // Tạo JWT token cho user
@@ -290,10 +305,10 @@ router.get('/google/callback',
       );
       
       
-      // Redirect về frontend với token và success flag
-      res.redirect(`http://localhost:8080/login?token=${token}&success=google_login`);
+      // Redirect về frontend với token - sử dụng hash route
+      res.redirect(`http://localhost:8080/#/login?token=${token}&success=google_login`);
     } catch (error) {
-      res.redirect('http://localhost:8080/login?error=google_auth_failed');
+      res.redirect('http://localhost:8080/#/login?error=google_auth_failed');
     }
   }
 );

@@ -120,44 +120,72 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background: rgba(17, 24, 39, 0.75);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1000;
+  padding: 1rem;
+  animation: fadeIn 0.2s ease;
 }
 
 .modal-content {
-  background: white;
-  border-radius: 12px;
-  width: 400px;
-  max-height: 500px;
+  background: linear-gradient(135deg, #ffffff 0%, #fafafa 100%);
+  border-radius: 16px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 600px;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25),
+              0 0 0 1px rgba(226, 232, 240, 0.6);
+  animation: slideUp 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .modal-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f8e0e6;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.8);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
   
   h3 {
     margin: 0;
-    color: #e91e63;
-    font-size: 18px;
+    font-size: 1.25rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   }
   
   .close-btn {
-    background: none;
+    background: #f1f5f9;
     border: none;
     cursor: pointer;
-    color: #e91e63;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
     
     i {
       font-size: 24px;
+      color: #64748b;
+    }
+    
+    &:hover {
+      background: #e2e8f0;
+      transform: rotate(90deg);
+      
+      i {
+        color: #475569;
+      }
     }
   }
 }
@@ -167,68 +195,94 @@ export default {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  background: white;
 }
 
 .search-box {
   position: relative;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f8e0e6;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
   
   input {
     width: 100%;
-    padding: 10px 40px 10px 12px;
-    border: 1px solid #f8e0e6;
-    border-radius: 20px;
+    padding: 0.75rem 2.75rem 0.75rem 1rem;
+    border: 2px solid #e2e8f0;
+    border-radius: 12px;
     outline: none;
-    background-color: #fff9fb;
+    background-color: white;
+    font-size: 0.9375rem;
+    transition: all 0.2s ease;
     
     &:focus {
-      border-color: #f8bbd0;
-      background-color: #fef1f6;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    &::placeholder {
+      color: #94a3b8;
     }
   }
   
   i {
     position: absolute;
-    right: 32px;
+    right: 2rem;
     top: 50%;
     transform: translateY(-50%);
-    color: #e91e63;
+    color: #667eea;
+    font-size: 20px;
   }
 }
 
 .friends-list {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 0;
+  padding: 0.5rem 0;
   
   &::-webkit-scrollbar {
     width: 6px;
   }
   
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
   &::-webkit-scrollbar-thumb {
-    background-color: #f8bbd0;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     border-radius: 3px;
+  }
+  
+  &::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(135deg, #5568d3 0%, #63428b 100%);
   }
 }
 
 .friend-item {
   display: flex;
   align-items: center;
-  padding: 12px 20px;
+  padding: 0.875rem 1.25rem;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.3);
   
   &:hover {
-    background-color: #fff9fb;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+    transform: translateX(4px);
+  }
+  
+  &:last-child {
+    border-bottom: none;
   }
 }
 
 .friend-avatar {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
-  margin-right: 12px;
+  margin-right: 14px;
+  border: 2px solid rgba(102, 126, 234, 0.1);
+  transition: border-color 0.2s ease;
+  flex-shrink: 0;
   
   img {
     width: 100%;
@@ -236,34 +290,107 @@ export default {
     border-radius: 50%;
     object-fit: cover;
   }
+  
+  .friend-item:hover & {
+    border-color: rgba(102, 126, 234, 0.3);
+  }
 }
 
 .friend-info {
   flex: 1;
+  min-width: 0;
 }
 
 .friend-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #262626;
-  margin-bottom: 2px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .friend-email {
-  font-size: 12px;
-  color: #8e8e8e;
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .no-friends {
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100px;
-  color: #e91e63;
+  height: 180px;
+  color: #94a3b8;
   
   p {
     margin: 0;
-    font-size: 14px;
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(30px) scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .modal-content {
+    max-width: 100%;
+    border-radius: 12px;
+    max-height: 85vh;
+  }
+  
+  .modal-header {
+    padding: 1rem 1.25rem;
+    
+    h3 {
+      font-size: 1.125rem;
+    }
+  }
+  
+  .search-box {
+    padding: 0.875rem 1rem;
+    
+    input {
+      font-size: 0.875rem;
+      padding: 0.625rem 2.5rem 0.625rem 0.875rem;
+    }
+    
+    i {
+      right: 1.5rem;
+      font-size: 18px;
+    }
+  }
+  
+  .friend-item {
+    padding: 0.75rem 1rem;
+  }
+  
+  .friend-avatar {
+    width: 44px;
+    height: 44px;
+    margin-right: 12px;
   }
 }
 </style>

@@ -171,34 +171,52 @@ export default {
 .message-input-container {
   display: flex;
   align-items: flex-end;
-  border-top: 1px solid #f8e0e6;
-  padding: 12px 16px;
-  background-color: #fef1f6;
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
+  backdrop-filter: blur(10px);
+  gap: 0.75rem;
 }
 
 .message-action-btn {
-  background: none;
+  background: #f1f5f9;
   border: none;
-  color: #e91e63;
+  color: #667eea;
   cursor: pointer;
-  padding: 8px;
-  margin-right: 8px;
+  padding: 0.625rem;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  flex-shrink: 0;
   
   &:hover {
-    color: #f06292;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
   }
   
   i {
-    font-size: 24px;
+    font-size: 22px;
   }
 }
 
 .message-input-wrapper {
   flex: 1;
-  background-color: #fce4ec;
+  background: white;
   border-radius: 24px;
-  padding: 8px 12px;
-  margin-right: 8px;
+  padding: 0.625rem 1rem;
+  border: 2px solid rgba(226, 232, 240, 0.6);
+  transition: all 0.2s ease;
+  
+  &:focus-within {
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
 }
 
 .message-input {
@@ -206,71 +224,98 @@ export default {
   resize: none;
   border: none;
   background: transparent;
-  font-size: 14px;
+  font-size: 0.9375rem;
   max-height: 120px;
   outline: none;
-  line-height: 20px;
+  line-height: 1.5;
   overflow-y: hidden;
+  color: #1e293b;
+  font-family: inherit;
   
   &::placeholder {
-    color: #ec407a;
+    color: #94a3b8;
   }
 }
 
 .message-send-btn {
-  background: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  color: #e91e63;
+  color: white;
   cursor: pointer;
-  padding: 8px;
+  padding: 0.625rem;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
+  flex-shrink: 0;
+  
+  &:hover:not(:disabled) {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 6px 15px rgba(102, 126, 234, 0.4);
+  }
+  
+  &:active:not(:disabled) {
+    transform: translateY(0) scale(0.98);
+  }
   
   &:disabled {
-    color: #f8bbd0;
+    background: #e2e8f0;
+    color: #94a3b8;
     cursor: not-allowed;
+    box-shadow: none;
   }
   
   i {
-    font-size: 24px;
+    font-size: 20px;
   }
 }
 
 .file-preview {
-  margin: 0 8px;
+  margin: 0 0.5rem;
+  animation: fadeInScale 0.2s ease;
   
   .image-preview {
     position: relative;
-    margin-bottom: 8px;
+    margin-bottom: 0.5rem;
     
     img {
-      max-width: 200px;
-      max-height: 150px;
-      border-radius: 12px;
+      max-width: 220px;
+      max-height: 160px;
+      border-radius: 14px;
       object-fit: cover;
-      border: 2px solid #f8bbd0;
+      border: 2px solid rgba(102, 126, 234, 0.2);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     }
     
     .image-close {
       position: absolute;
       top: -8px;
       right: -8px;
-      width: 24px;
-      height: 24px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
-      background-color: #e91e63;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
       border: 2px solid white;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(102, 126, 234, 0.4);
       
       i {
-        font-size: 14px;
+        font-size: 16px;
         margin: 0;
       }
       
       &:hover {
-        background-color: #f06292;
+        transform: rotate(90deg) scale(1.1);
+        background: linear-gradient(135deg, #5568d3 0%, #63428b 100%);
       }
     }
   }
@@ -278,37 +323,95 @@ export default {
   .file-info {
     display: flex;
     align-items: center;
-    background-color: #fce4ec;
-    padding: 8px 12px;
-    border-radius: 16px;
-    border: 1px solid #f8bbd0;
+    background: white;
+    padding: 0.625rem 1rem;
+    border-radius: 14px;
+    border: 2px solid rgba(102, 126, 234, 0.2);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
     
     i {
-      margin-right: 8px;
-      color: #e91e63;
+      margin-right: 10px;
+      color: #667eea;
+      font-size: 20px;
     }
     
     span {
-      font-size: 12px;
-      color: #e91e63;
-      max-width: 150px;
+      font-size: 0.8125rem;
+      color: #475569;
+      max-width: 160px;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      font-weight: 500;
     }
     
     .clear-file-btn {
       background: none;
       border: none;
-      margin-left: 8px;
+      margin-left: 10px;
       cursor: pointer;
-      color: #e91e63;
+      color: #94a3b8;
+      transition: all 0.2s ease;
+      
+      &:hover {
+        color: #667eea;
+        transform: scale(1.2);
+      }
       
       i {
-        font-size: 16px;
+        font-size: 18px;
         margin: 0;
       }
     }
+  }
+}
+
+@keyframes fadeInScale {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .message-input-container {
+    padding: 0.875rem 1rem;
+    gap: 0.625rem;
+  }
+  
+  .message-action-btn,
+  .message-send-btn {
+    width: 36px;
+    height: 36px;
+    
+    i {
+      font-size: 20px;
+    }
+  }
+  
+  .message-input {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .message-input-container {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .file-preview .image-preview img {
+    max-width: 180px;
+    max-height: 140px;
+  }
+  
+  .file-info span {
+    max-width: 120px;
   }
 }
 </style>

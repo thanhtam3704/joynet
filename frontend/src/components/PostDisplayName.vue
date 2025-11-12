@@ -1,8 +1,15 @@
 <template>
   <div class="user-post-name">
-    <a>
+    <router-link 
+      v-if="id && id.match(/^[0-9a-fA-F]{24}$/)" 
+      :to="{ name: 'Profile', params: { id: id } }" 
+      class="user-name-link"
+    >
       {{ displayName }}
-    </a>
+    </router-link>
+    <span v-else class="user-name-text">
+      {{ displayName }}
+    </span>
   </div>
 </template>
 
@@ -73,5 +80,20 @@ export default {
 .user-post-name {
   font-weight: bold;
   font-size: 1rem;
+}
+
+.user-name-link {
+  color: inherit;
+  text-decoration: none;
+  transition: color 0.2s ease;
+}
+
+.user-name-link:hover {
+  color: var(--primary, #667eea);
+  text-decoration: underline;
+}
+
+.user-name-text {
+  color: inherit;
 }
 </style>

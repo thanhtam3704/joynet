@@ -1,52 +1,101 @@
 <template>
   <div class="profile-posts">
     <!-- Loading skeletons -->
-    <Skeletor circle size="50" class="skeletor" v-if="isSkeletorLoading" />
-    <Skeletor v-if="isSkeletorLoading" class="skeletor" width="100%" height="20" />
-    <Skeletor v-if="isSkeletorLoading" class="skeletor" width="100%" height="300" />
+    <div v-if="isSkeletorLoading">
+      <Skeletor circle size="50" class="skeletor" />
+      <Skeletor class="skeletor" width="100%" height="20" />
+      <Skeletor class="skeletor" width="100%" height="300" />
+    </div>
+
+    <!-- Private account message -->
+    <div v-else-if="shouldHidePosts" class="private-message">
+      <div class="private-message-icon">🔒</div>
+      <h4>Tài khoản này ở chế độ riêng tư</h4>
+      <p>Theo dõi tài khoản này để xem bài viết của họ.</p>
+    </div>
 
     <!-- Posts -->
-    <div v-for="post in posts" :key="post._id" class="profile-post" v-else :data-post-id="post._id">
-      <router-link :to="{ name: 'PostDetail', params: { id: post._id } }" class="profile-post__link">
-        <div class="post">
-          <div class="post__avatar">
-            <ProfileImage :id="post.userId" />
-          </div>
-          <div class="post__content-wrapper">
-            <div class="post-header">
+    <div v-for="post in posts" :key="post._id" class="profile-post" :data-post-id="post._id" v-else>
+      <div class="post">
+        <div class="post__avatar">
+          <ProfileImage :id="post.userId" />
+        </div>
+        <div class="post__content-wrapper">
+          <div class="post-header">
+            <div class="post-header-left">
               <PostDisplayName :id="post.userId" />
-              <PostActions 
-                :post="post" 
-                @edit-post="openEditModal"
-                @delete-post="handleDeletePost"
-                @click.stop
-              />
+              <span class="post-time" v-if="post.createdAt">
+                {{ formatFullDateTime(post.createdAt) }}
+              </span>
             </div>
-            <div class="post-desc">
-              <p
-                v-if="post.description"
-                class="post__content"
-                :class="{
-                  'post__content--truncated': isPostTruncated(post.description) && !isPostExpanded(post._id),
-                  'post__content--expanded': isPostExpanded(post._id),
-                }"
-              >
-                {{ post.description }}
-              </p>
-              <button
-                v-if="isPostTruncated(post.description)"
-                @click.prevent.stop="toggleExpandPost(post._id)"
-                class="read-more-link"
-              >
-                {{ isPostExpanded(post._id) ? 'Thu gọn' : 'Xem thêm' }}
-              </button>
-            </div>
-            <div v-if="post.file" class="post__image-wrapper">
-              <img :src="`http://localhost:3000/uploads/${post.file}`" class="post__image" />
-            </div>
+            <PostActions 
+              :post="post" 
+              @edit-post="openEditModal"
+              @delete-post="handleDeletePost"
+            />
+          </div>
+          <div class="post-desc" @click="goToPostDetail(post._id)" style="cursor: pointer;">
+            <p
+              v-if="post.description"
+              class="post__content"
+              :class="{
+                'post__content--truncated': isPostTruncated(post.description) && !isPostExpanded(post._id),
+                'post__content--expanded': isPostExpanded(post._id),
+              }"
+            >
+              {{ post.description }}
+            </p>
+            <button
+              v-if="isPostTruncated(post.description)"
+              @click.prevent.stop="toggleExpandPost(post._id)"
+              class="read-more-link"
+            >
+              {{ isPostExpanded(post._id) ? 'Thu gọn' : 'Xem thêm' }}
+            </button>
+          </div>
+          <div v-if="post.file" class="post__image-wrapper" @click="goToPostDetail(post._id)" style="cursor: pointer;">
+            <img :src="`http://localhost:3000/uploads/${post.file}`" class="post__image" />
           </div>
         </div>
-      </router-link>
+      </div>
+
+      <!-- Reactions Summary -->
+      <ReactionsSummary
+        v-if="(post.likesCount || 0) > 0 || (post.commentsCount || 0) > 0"
+        :post-id="post._id"
+        :reactions-count="post.reactionsCount || {}"
+        :total-likes="post.likesCount || 0"
+        :total-comments="post.commentsCount || 0"
+        @show-reactors="(reactionType) => showReactorsModal(post._id, reactionType)"
+        @show-all-reactors="showAllReactorsModal(post._id)"
+        @show-comments="goToPostDetail(post._id)"
+      />
+
+      <!-- Action bar -->
+      <LikeActionBar
+        :post-id="post._id"
+        :initial-liked="isLikedFor(post)"
+        :initial-likes-count="post.likesCount || 0"
+        :initial-user-reaction="post.userReaction || null"
+        :initial-reactions-count="post.reactionsCount || {}"
+        :show-comment="true"
+        @comment="goToPostDetail(post._id)"
+        @updated="({ isLiked, likesCount, userReaction, reactionsCount }) => updatePostReaction(post._id, { isLiked, likesCount, userReaction, reactionsCount })"
+      />
+    </div>
+
+    <!-- Loading More Indicator -->
+    <div class="loading-more" v-if="loadingMore">
+      <sync-loader :color="'#667eea'"></sync-loader>
+      <span>Đang tải thêm bài viết...</span>
+    </div>
+
+    <!-- Scroll trigger element -->
+    <div ref="scrollTrigger" class="scroll-trigger" v-if="hasMore && !isSkeletorLoading"></div>
+
+    <!-- End message -->
+    <div class="end-message" v-if="!hasMore && posts.length > 0 && !isSkeletorLoading">
+      <span>🎉 Bạn đã xem hết tất cả bài viết</span>
     </div>
 
     <!-- Edit Post Modal -->
@@ -56,6 +105,17 @@
       @close="closeEditModal"
       @save="handleSavePost"
     />
+
+    <!-- Reactors Modal -->
+    <Teleport to="body">
+      <ReactorsModal
+        v-if="showReactorsModalVisible"
+        :post-id="selectedPostIdForReactors"
+        :reactions-count="selectedPostReactionsCount"
+        :initial-tab="selectedReactionTab"
+        @close="closeReactorsModal"
+      />
+    </Teleport>
   </div>
 </template>
 
@@ -65,6 +125,11 @@ import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
 import PostActions from "@/components/PostActions.vue";
 import PostEditModal from "@/components/PostEditModal.vue";
+import LikeActionBar from '@/components/LikeActionBar.vue';
+import ReactionsSummary from '@/components/ReactionsSummary.vue';
+import ReactorsModal from '@/components/ReactorsModal.vue';
+import { formatDateTime } from '@/utils/timeUtils';
+import SyncLoader from "vue-spinner/src/SyncLoader.vue";
 
 export default {
   name: "ProfileUserPosts",
@@ -74,8 +139,29 @@ export default {
     ProfileImage,
     PostActions,
     PostEditModal,
+    LikeActionBar,
+    ReactionsSummary,
+    ReactorsModal,
+    SyncLoader,
   },
-  props: ["id"],
+  props: {
+    id: {
+      type: String,
+      required: true
+    },
+    isPrivate: {
+      type: Boolean,
+      default: false
+    },
+    isFollowing: {
+      type: Boolean,
+      default: false
+    },
+    isCurrentUser: {
+      type: Boolean,
+      default: false
+    }
+  },
   data() {
     return {
       posts: [],
@@ -86,16 +172,29 @@ export default {
       expandedPosts: {},
       showEditModal: false,
       selectedPost: null,
+      currentPage: 1,
+      hasMore: true,
+      loadingMore: false,
+      observer: null,
+      // Reactors modal
+      showReactorsModalVisible: false,
+      selectedPostIdForReactors: null,
+      selectedPostReactionsCount: {},
+      selectedReactionTab: 'all',
     };
   },
   computed: {
     user() {
       return this.$store.state.user;
     },
-    // Theo dõi posts từ store để tự động cập nhật
-    storePosts() {
-      return this.$store.state.posts;
-    },
+    shouldHidePosts() {
+      // Hiển thị bài viết nếu:
+      // 1. Là tài khoản của chính mình
+      // 2. Tài khoản công khai (không riêng tư)
+      // 3. Tài khoản riêng tư nhưng đã theo dõi
+      // Ngược lại -> ẩn bài viết
+      return this.isPrivate && !this.isCurrentUser && !this.isFollowing;
+    }
   },
   watch: {
     // Watch khi ID thay đổi (chuyển sang profile khác)
@@ -105,35 +204,164 @@ export default {
       },
       immediate: false, // Đã gọi trong created()
     },
-    // Watch posts từ store để cập nhật nếu có bài viết mới
-    storePosts: {
-      handler() {
-        // Chỉ cập nhật nếu đang xem profile của user hiện tại
-        const currentUserId = this.$store.state.user?._id;
-        if (currentUserId && this.id === currentUserId) {
-          this.loadUserPosts();
-        }
-      },
-      immediate: false,
-    },
+    // REMOVED: storePosts watch để tránh reload không cần thiết khi reaction thay đổi
+    // Chỉ cập nhật qua updatePostReaction method được gọi từ LikeActionBar
   },
   async created() {
     await this.loadUserPosts();
+    // Setup infinite scroll
+    this.setupInfiniteScroll();
+    // Setup intersection observer
+    this.setupIntersectionObserver();
+  },
+  beforeUnmount() {
+    // Cleanup scroll listener
+    this.removeInfiniteScroll();
+    // Cleanup intersection observer
+    if (this.observer) {
+      this.observer.disconnect();
+    }
   },
   methods: {
+    setupInfiniteScroll() {
+      this.scrollHandler = this.throttle(this.handleScroll.bind(this), 200);
+      window.addEventListener('scroll', this.scrollHandler, { passive: true });
+    },
+    removeInfiniteScroll() {
+      if (this.scrollHandler) {
+        window.removeEventListener('scroll', this.scrollHandler);
+      }
+    },
+    throttle(func, delay) {
+      let timeoutId;
+      let lastRan;
+      return function(...args) {
+        if (!lastRan) {
+          func.apply(this, args);
+          lastRan = Date.now();
+        } else {
+          clearTimeout(timeoutId);
+          timeoutId = setTimeout(() => {
+            if ((Date.now() - lastRan) >= delay) {
+              func.apply(this, args);
+              lastRan = Date.now();
+            }
+          }, delay - (Date.now() - lastRan));
+        }
+      };
+    },
+    handleScroll() {
+      // Kiểm tra nếu đang loading hoặc không còn bài post
+      if (this.loadingMore || !this.hasMore || this.isSkeletorLoading) {
+        return;
+      }
+
+      // Tính toán khoảng cách đến cuối trang
+      const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+      const windowHeight = window.innerHeight;
+      const documentHeight = document.documentElement.scrollHeight;
+
+      // Debug log
+      console.log('Profile Scroll Debug:', {
+        scrollTop,
+        windowHeight,
+        documentHeight,
+        remaining: documentHeight - (scrollTop + windowHeight),
+        hasMore: this.hasMore,
+        loadingMore: this.loadingMore
+      });
+
+      // Nếu cuộn đến gần cuối trang (còn 500px nữa là hết)
+      if (scrollTop + windowHeight >= documentHeight - 500) {
+        console.log('Triggering loadMore in Profile...');
+        this.loadMore();
+      }
+    },
+    setupIntersectionObserver() {
+      // Wait for next tick to ensure the ref is available
+      this.$nextTick(() => {
+        if (!this.$refs.scrollTrigger) {
+          console.log('Profile scroll trigger ref not available yet');
+          return;
+        }
+
+        const options = {
+          root: null, // viewport
+          rootMargin: '500px', // Trigger 500px before reaching the element
+          threshold: 0.1 // Trigger when 10% of the element is visible
+        };
+
+        this.observer = new IntersectionObserver((entries) => {
+          entries.forEach(entry => {
+            console.log('Profile Intersection Observer:', {
+              isIntersecting: entry.isIntersecting,
+              hasMore: this.hasMore,
+              loadingMore: this.loadingMore
+            });
+            
+            if (entry.isIntersecting && this.hasMore && !this.loadingMore) {
+              console.log('Profile Observer triggering loadMore...');
+              this.loadMore();
+            }
+          });
+        }, options);
+
+        this.observer.observe(this.$refs.scrollTrigger);
+        console.log('Profile Intersection Observer initialized');
+      });
+    },
+    formatFullDateTime(timestamp) {
+      return formatDateTime(timestamp, true);
+    },
     async loadUserPosts() {
       this.isSkeletorLoading = true;
 
       try {
-  // Đảm bảo loadUser hoàn thành trước
-  await this.$store.dispatch("loadUser");
-        const { getUserPosts } = await import('@/api/posts');
-        const responsePosts = await getUserPosts(this.id);
+        // Đảm bảo loadUser hoàn thành trước
+        await this.$store.dispatch("loadUser");
+        const { getUserPosts, getReactionStatus } = await import('@/api/posts');
+        const responsePosts = await getUserPosts(this.id, 1, 6);
         if (responsePosts.status === 200) {
           const data = responsePosts.data;
-          this.posts = data.sort((p1, p2) => {
-            return new Date(p2.createdAt) - new Date(p1.createdAt);
-          });
+          let posts = data.posts || [];
+          
+          console.log('ProfileUserPosts loaded:', posts.length, 'posts');
+          console.log('Posts data:', posts);
+          
+          // Enrich posts with reaction data
+          const currentUserId = this.$store.state.user?._id;
+          if (currentUserId && posts.length > 0) {
+            posts = await Promise.all(
+              posts.map(async (p) => {
+                try {
+                  const res = await getReactionStatus(p._id, currentUserId);
+                  if (res.status === 200) {
+                    return {
+                      ...p,
+                      userReaction: res.data?.userReaction || null,
+                      reactionsCount: res.data?.reactionsCount || {},
+                      isLiked: !!res.data?.userReaction,
+                      likesCount: typeof res.data?.likesCount === "number" ? res.data.likesCount : p.likesCount || 0,
+                    };
+                  }
+                } catch (_) {
+                  // ignore and fallback
+                }
+                return {
+                  ...p,
+                  userReaction: null,
+                  reactionsCount: {},
+                  isLiked: false,
+                  likesCount: typeof p.likesCount === "number" ? p.likesCount : 0,
+                };
+              })
+            );
+          }
+          
+          this.posts = posts;
+          this.hasMore = data.hasMore || false;
+          this.currentPage = 1;
+          
           // Initialize expand state for each post
           const init = {};
           this.posts.forEach(p => { init[p._id] = false; });
@@ -148,10 +376,32 @@ export default {
           this.currentUser = false;
         }
       } catch (error) {
-  console.error("Load user posts error:", error);
+        console.error("Load user posts error:", error);
       }
 
       this.isSkeletorLoading = false;
+    },
+    async loadMore() {
+      if (!this.hasMore || this.loadingMore) return;
+      
+      this.loadingMore = true;
+      try {
+        const { getUserPosts } = await import('@/api/posts');
+        const responsePosts = await getUserPosts(this.id, this.currentPage + 1, 6);
+        if (responsePosts.status === 200) {
+          const data = responsePosts.data;
+          const newPosts = data.posts || [];
+          this.posts = [...this.posts, ...newPosts];
+          this.hasMore = data.hasMore || false;
+          this.currentPage += 1;
+          
+          // Add expand state for new posts
+          newPosts.forEach(p => { this.expandedPosts[p._id] = false; });
+        }
+      } catch (error) {
+        console.error("Load more posts error:", error);
+      }
+      this.loadingMore = false;
     },
     isPostTruncated(description) {
       const maxLength = 200;
@@ -230,7 +480,63 @@ export default {
         console.error('Error deleting post:', error);
         // Handle error (show error message to user)
       }
-    }
+    },
+    // Reaction methods
+    isLikedFor(post) {
+      const currentUserId = this.$store?.state?.user?._id;
+      if (post && Array.isArray(post.likes)) {
+        return post.isLiked || post.likes.includes(currentUserId);
+      }
+      return !!post?.isLiked;
+    },
+    updatePostReaction(postId, { isLiked, likesCount, userReaction, reactionsCount }) {
+      const idx = this.posts.findIndex((p) => p._id === postId);
+      if (idx !== -1) {
+        // Cập nhật trực tiếp properties thay vì replace toàn bộ object để tránh nháy
+        const post = this.posts[idx];
+        post.isLiked = isLiked;
+        post.userReaction = userReaction;
+        post.reactionsCount = reactionsCount;
+        post.likesCount = likesCount;
+      }
+    },
+    goToPostDetail(postId) {
+      this.$emit('show-post-detail', postId);
+    },
+    // Reactors modal methods
+    showReactorsModal(postId, reactionType) {
+      const post = this.posts.find(p => p._id === postId);
+      if (post) {
+        this.selectedPostIdForReactors = postId;
+        this.selectedPostReactionsCount = post.reactionsCount || {};
+        this.selectedReactionTab = reactionType || 'all';
+        this.showReactorsModalVisible = true;
+      }
+    },
+    showAllReactorsModal(postId) {
+      const post = this.posts.find(p => p._id === postId);
+      if (post) {
+        this.selectedPostIdForReactors = postId;
+        this.selectedPostReactionsCount = post.reactionsCount || {};
+        this.selectedReactionTab = 'all';
+        this.showReactorsModalVisible = true;
+      }
+    },
+    closeReactorsModal() {
+      this.showReactorsModalVisible = false;
+      this.selectedPostIdForReactors = null;
+      this.selectedPostReactionsCount = {};
+      this.selectedReactionTab = 'all';
+    },
+    updatePostCommentsCount(postId, newCount) {
+      // Find and update the post's commentsCount
+      const post = this.posts.find(p => p._id === postId);
+      if (post) {
+        post.commentsCount = newCount;
+        // Force reactivity update
+        this.$forceUpdate();
+      }
+    },
   },
 };
 </script>
@@ -243,7 +549,10 @@ export default {
 .post { display:flex; padding:1.5rem; }
 .post__avatar :deep(img) { width:40px; height:40px; border-radius:100%; }
 .post__content-wrapper { flex:1; margin-left:1rem; display:flex; flex-direction:column; }
-.post-header { display:flex; align-items:flex-start; justify-content:space-between; width:100%; margin-bottom: -1rem; }
+.post-header { display:flex; align-items:flex-start; justify-content:space-between; width:100%; margin-bottom: -0.5rem; }
+.post-header-left { display:flex; flex-direction:column; gap:0.25rem; }
+.post-time { font-size:0.8125rem; color:#94a3b8; font-weight:500; display:flex; align-items:center; gap:0.375rem; transition:color 0.2s ease; }
+.post-time::before { content:'•'; font-size:0.625rem; color:#cbd5e1; }
 .post-desc { max-width:100%; overflow:hidden; }
 .post__content { margin-top:.5rem; font-size:.9rem; white-space:pre-wrap; word-break:break-word; line-height:1.4; transition:all .3s ease;max-width: 95%; }
 .post__content--truncated { max-height:120px; overflow:hidden; position:relative; display:-webkit-box; -webkit-line-clamp:5; line-clamp:5; -webkit-box-orient:vertical; }
@@ -254,4 +563,80 @@ export default {
 .post__image-wrapper { margin-top:.5rem; }
 .post__image { width:95%; max-height:350px; object-fit:cover; border-radius:7px; display:block; }
 .skeletor { margin-top:1rem; }
+
+.private-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 2rem;
+  text-align: center;
+  background: var(--white);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--gray-100);
+  min-height: 300px;
+}
+
+.private-message-icon {
+  font-size: 4rem;
+  margin-bottom: 1.5rem;
+  opacity: 0.7;
+}
+
+.private-message h4 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  margin-bottom: 0.75rem;
+  font-family: var(--font-display);
+}
+
+.private-message p {
+  font-size: 1rem;
+  color: var(--gray-600);
+  line-height: 1.6;
+  max-width: 400px;
+}
+
+.loading-more { display:flex; flex-direction:column; align-items:center; justify-content:center; padding:2rem 0; gap:1rem; }
+.loading-more span { font-size:0.9375rem; color:#94a3b8; font-weight:500; }
+
+.end-message { text-align:center; padding:2rem 0; font-size:1rem; color:#94a3b8; font-weight:500; margin-bottom:2rem; }
+.end-message span { display:inline-block; padding:1rem 2rem; background:linear-gradient(135deg, rgba(102,126,234,0.05) 0%, rgba(118,75,162,0.05) 100%); border-radius:12px; border:1px solid rgba(102,126,234,0.2); }
+
+@media (max-width: 768px) {
+  .post-time { font-size:0.75rem; }
+  .private-message {
+    padding: 3rem 1.5rem;
+    min-height: 250px;
+  }
+  .private-message-icon {
+    font-size: 3rem;
+  }
+  .private-message h4 {
+    font-size: 1.25rem;
+  }
+  .private-message p {
+    font-size: 0.9375rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .post-time { font-size:0.7rem; }
+  .private-message {
+    padding: 2rem 1rem;
+    min-height: 200px;
+  }
+  .private-message-icon {
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
+  }
+  .private-message h4 {
+    font-size: 1.125rem;
+  }
+  .private-message p {
+    font-size: 0.875rem;
+  }
+}
 </style>

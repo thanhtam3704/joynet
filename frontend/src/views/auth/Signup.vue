@@ -19,7 +19,7 @@
         />
         <span class="input__label">E-mail</span>
       </label>
-      <label class="input" style="position: relative">
+      <label class="input password-input">
         <input
           class="input__field"
           :type="showPassword ? 'text' : 'password'"
@@ -302,204 +302,335 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.card {
-  background: var(--white);
-  padding: calc(4 * var(--size-bezel));
-  border-radius: var(--size-radius);
-  border: 3px solid var(--color-shadow, currentColor);
-  box-shadow: 0.5rem 0.5rem 0 var(--color-shadow, currentColor);
-  margin-top: 2rem;
-
-  &--inverted {
-    --color-background: var(--color-dark);
-    color: var(--color-light);
-    --color-shadow: var(--color-accent);
-  }
-
-  &--accent {
-    --color-background: var(--color-signal);
-    --color-accent: var(--color-light);
-    color: var(--color-dark);
-  }
-
-  &__logo {
-    width: 60px;
-    height: 60px;
-    margin-bottom: 1rem;
-  }
-
-  *:first-child {
-    margin-top: 0;
-  }
-
-  &__text {
-    margin-bottom: 1rem;
+.signup {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  position: relative;
+  overflow: hidden;
+  
+  /* Animated Gradient Background */
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: moveBackground 20s linear infinite;
   }
 }
 
-.signup {
-  max-width: 40rem;
-  padding: 3rem;
-  margin-left: auto;
-  margin-right: auto;
+@keyframes moveBackground {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(50px, 50px); }
+}
+
+.card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 480px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 2.5rem;
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25),
+              0 0 0 1px rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.4s ease;
+
+  &--accent {
+    --color-background: var(--white);
+    color: var(--gray-900);
+  }
+
+  &__logo {
+    width: 64px;
+    height: 64px;
+    filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.1));
+  }
+
+  &__text {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--gray-900);
+    margin-bottom: 2rem;
+    text-align: center;
+    font-family: var(--font-display);
+  }
+}
+
+.logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.joynet-logo-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2rem;
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  filter: drop-shadow(0 2px 4px rgba(102, 126, 234, 0.2));
 }
 
 .input {
   position: relative;
+  margin-bottom: 1.75rem;
 
-  &__label {
-    position: absolute;
-    left: 0;
-    top: 0;
-    padding: calc(var(--size-bezel) * 0.75) calc(var(--size-bezel) * 0.5);
-    margin: calc(var(--size-bezel) * 0.75 + 3px) calc(var(--size-bezel) * 0.5);
-    white-space: nowrap;
-    transform: translate(0, 0);
-    transform-origin: 0 0;
-    transition: transform 120ms ease-in;
-    line-height: 1.2;
-    color: gray;
-  }
   &__field {
     box-sizing: border-box;
     display: block;
     width: 100%;
-    border: 3px solid currentColor;
-    padding: calc(var(--size-bezel) * 1.5) var(--size-bezel);
-    color: currentColor;
-    background: transparent;
-    border-radius: var(--size-radius);
-    margin-bottom: 1rem;
+    border: 2px solid var(--gray-200);
+    padding: 0.875rem 1rem;
+    color: var(--gray-900);
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    font-size: 0.9375rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-    &:-webkit-autofill,
-    &:focus,
-    &:not(:placeholder-shown) {
+    &:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+      
       & + .input__label {
-        transform: translate(0.25rem, -65%) scale(0.8);
-        color: #ff80ab; /* Updated to match our pastel theme */
-        background: var(--white);
-        padding: 0 0.3em;
-        z-index: 2;
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--primary);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
       }
     }
 
-    // Xử lý màu nền khi autofill
-    &:-webkit-autofill {
-      -webkit-box-shadow: 0 0 0 30px white inset !important;
-      -webkit-text-fill-color: currentColor !important;
+    &:not(:placeholder-shown) {
+      & + .input__label {
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--gray-600);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
+      }
     }
   }
+
+  &__label {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--gray-500);
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    z-index: 1;
+  }
 }
-// Nút hiện/ẩn mật khẩu
+
+.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+}
+
+.password-input {
+  position: relative;
+  
+  .input__field {
+    padding-right: 3rem;
+  }
+}
+
 .toggle-password-btn {
   position: absolute;
-  right: 0.75rem;
+  right: 0.625rem;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
-  padding: 0 0.25em;
-  color: var(--txt-darkest);
+  font-size: 1.125rem;
+  padding: 0.375rem;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
   z-index: 3;
-}
-.button-group {
-  margin-top: calc(var(--size-bezel) * 2.5);
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
 }
 
-button {
-  color: currentColor;
-  padding: var(--size-bezel) calc(var(--size-bezel) * 2);
-  background: var(--light);
-  border: none;
-  border-radius: var(--size-radius);
-  font-weight: 900;
-  font-family: "Roboto", "Arial", "Helvetica Neue", "Segoe UI", "Tahoma",
-    "Geneva", "Verdana", "sans-serif";
+.toggle-password-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+  transform: translateY(-50%) scale(1.05);
 }
 
-button + button {
-  margin-left: calc(var(--size-bezel) * 2);
-}
-
-.icon {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  margin-right: 0.5em;
-}
-
-.hidden {
-  display: none;
+.toggle-password-btn:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 .warn {
-  color: #ff8a80; /* Lighter red to match our pastel theme */
-}
-// Logo và chữ Joynet trên một dòng, căn giữa đẹp
-.logo-row {
+  color: var(--error);
+  font-size: 0.875rem;
+  margin: -0.75rem 0 1rem 0;
   display: flex;
   align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+
+  &::before {
+    content: '⚠️';
+    font-size: 1rem;
+  }
+}
+
+.button-group {
+  display: flex;
   gap: 0.75rem;
+  margin-top: 1.5rem;
+
+  &-left,
+  &-right {
+    flex: 1;
+  }
+
+  button {
+    width: 100%;
+    height: 48px;
+    border-radius: var(--radius-lg);
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    border: none;
+    font-family: var(--font-primary);
+  }
+
+  &-left button {
+    background: var(--gradient-primary);
+    color: var(--white);
+    box-shadow: 0 4px 6px -1px rgba(102, 126, 234, 0.3);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 20px -5px rgba(102, 126, 234, 0.4);
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+  }
+
+  &-right button {
+    background: var(--white);
+    color: var(--gray-700);
+    border: 2px solid var(--gray-200);
+
+    &:hover {
+      background: var(--gray-50);
+      border-color: var(--gray-300);
+    }
+  }
 }
-.joynet-logo-text {
-  font-family: "Montserrat", "Segoe UI", "Arial", "Helvetica Neue", sans-serif;
-  font-weight: 900;
-  font-size: 2rem;
-  background: linear-gradient(90deg, #fe7b77 0%, #fea94f 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 2px 2px 8px rgba(254, 123, 119, 0.1),
-    0 2px 8px rgba(254, 169, 79, 0.1);
-  display: inline-block;
+
+.signup-button-loader {
+  width: 100%;
 }
-// Hiệu ứng border đỏ khi input lỗi
-.input-error {
-  border-color: #ff8a80 !important; /* Lighter red to match our pastel theme */
-  box-shadow: 0 0 0 2px rgba(255, 138, 128, 0.15);
+
+.signup-loader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 48px;
 }
-/* Google Signup Styles */
+
 .divider-row {
   display: flex;
   align-items: center;
-  margin: 1.5rem 0 1rem 0;
+  margin: 2rem 0 1.5rem 0;
 }
+
 .divider-line {
   flex: 1;
   height: 1px;
-  background: #e0e0e0;
+  background: var(--gray-200);
 }
+
 .divider-text {
   margin: 0 1rem;
-  color: #888;
-  font-size: 0.95rem;
+  color: var(--gray-500);
+  font-size: 0.875rem;
+  font-weight: 500;
 }
+
 .google-login-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   width: 100%;
-  padding: 0.7rem 0;
-  background: #fff;
-  border: 1px solid #d1d1d1;
-  border-radius: 4px;
+  height: 48px;
+  padding: 0;
+  background: var(--white);
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-lg);
   font-size: 1rem;
-  font-weight: 500;
-  color: #444;
+  font-weight: 600;
+  color: var(--gray-700);
   cursor: pointer;
-  transition: box-shadow 0.2s;
-  margin-bottom: 1.2rem;
+  transition: all 0.3s ease;
+  font-family: var(--font-primary);
+
+  &:hover {
+    background: var(--gray-50);
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(66, 133, 244, 0.15);
+  }
 }
-.google-login-btn:hover {
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.15);
-}
+
 .google-logo {
   width: 22px;
   height: 22px;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .signup {
+    padding: 1rem;
+  }
+
+  .card {
+    padding: 2rem 1.5rem;
+    border-radius: var(--radius-xl);
+  }
+
+  .card__text {
+    font-size: 1.25rem;
+  }
+
+  .joynet-logo-text {
+    font-size: 1.75rem;
+  }
+
+  .button-group {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
 }
 </style>

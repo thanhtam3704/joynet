@@ -18,6 +18,27 @@ const ConversationSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  // Group chat fields
+  isGroup: {
+    type: Boolean,
+    default: false
+  },
+  groupName: {
+    type: String,
+    default: null
+  },
+  groupAvatar: {
+    type: String,
+    default: null
+  },
+  admins: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, {
   timestamps: true
@@ -26,5 +47,6 @@ const ConversationSchema = new mongoose.Schema({
 // Index để tối ưu hóa query
 ConversationSchema.index({ participants: 1 });
 ConversationSchema.index({ lastMessageTime: -1 });
+ConversationSchema.index({ isGroup: 1 });
 
 module.exports = mongoose.model('Conversation', ConversationSchema);

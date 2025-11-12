@@ -28,7 +28,7 @@
     "@vue/cli-service": "~4.5.0",
     "@vue/compiler-sfc": "^3.0.0",
     "@vue/test-utils": "^2.0.0-0",
-    "node-sass": "^6.0.1",
+    "sass": "^1.94.0",
     "sass-loader": "^10",
     "typescript": "~3.9.3",
     "vue-jest": "^5.0.0-0"

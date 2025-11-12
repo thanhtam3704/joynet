@@ -95,6 +95,55 @@ router.get("/:id/comments", async (req, res) => {
   }
 });
 
+//GET COMMENTERS (unique users who commented)
+router.get("/:id/commenters", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    
+    console.log('🔍 Getting commenters for post:', sanitizedPostId);
+    
+    // Get all comments for this post
+    const comments = await Comment.find({ postId: sanitizedPostId })
+      .sort({ createdAt: -1 });
+    
+    console.log('📝 Found comments:', comments.length);
+    
+    // Get unique user IDs
+    const uniqueUserIds = [...new Set(comments.map(c => c.userId))];
+    console.log('👥 Unique user IDs:', uniqueUserIds);
+    
+    // Fetch user details for each unique userId
+    const User = require('../models/User');
+    const users = await User.find({ _id: { $in: uniqueUserIds } })
+      .select('displayName email profilePicture');
+    
+    console.log('✅ Users found:', users);
+    
+    // Map users to commenter format
+    const commenters = users.map(user => ({
+      _id: user._id,
+      username: user.displayName || user.email,
+      displayName: user.displayName,
+      profilePicture: user.profilePicture
+    }));
+    
+    console.log('📤 Sending response:', {
+      commenters,
+      count: commenters.length,
+      totalComments: comments.length
+    });
+    
+    return res.status(200).json({
+      commenters,
+      count: commenters.length,
+      totalComments: comments.length
+    });
+  } catch (err) {
+    console.error('❌ Get commenters error:', err);
+    return res.status(500).json(err);
+  }
+});
+
 //GET A POST
 router.get("/:id", async (req, res) => {
   try {
@@ -105,35 +154,360 @@ router.get("/:id", async (req, res) => {
   }
 });
 
-//GET FRIENDS POSTS
+//GET FRIENDS POSTS (with pagination)
 router.get("/timeline/:userId", async (req, res) => {
   try {
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
+    const skip = (page - 1) * limit;
+
     const currentUser = await User.findById(req.params.userId);
-    const userPosts = await Post.find({ userId: currentUser._id });
-    const friendPosts = await Promise.all(
-      currentUser.followings.map((friendId) => {
-        return Post.find({ userId: friendId });
-      })
-    );
-    return res.json(userPosts.concat(...friendPosts));
+    
+    // Lấy tất cả userId cần query (bản thân + followings)
+    const userIds = [currentUser._id, ...currentUser.followings];
+    
+    // Query posts với pagination
+    const posts = await Post.find({ userId: { $in: userIds } })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    // Initialize reactionsCount for old posts if not exists
+    const enrichedPosts = posts.map(post => {
+      const postObj = post.toObject();
+      
+      // Convert reactions Map to Object
+      if (postObj.reactions instanceof Map) {
+        postObj.reactions = Object.fromEntries(postObj.reactions);
+      } else if (!postObj.reactions) {
+        postObj.reactions = {};
+      }
+      
+      // Convert reactionsCount Map to Object and recalculate if needed
+      if (postObj.reactionsCount instanceof Map) {
+        postObj.reactionsCount = Object.fromEntries(postObj.reactionsCount);
+      } else if (!postObj.reactionsCount) {
+        postObj.reactionsCount = {};
+      }
+      
+      // Recalculate reactionsCount from reactions if it's empty or invalid
+      if (Object.keys(postObj.reactionsCount).length === 0 && Object.keys(postObj.reactions).length > 0) {
+        const tempCount = {};
+        
+        Object.values(postObj.reactions).forEach(reactionType => {
+          if (!tempCount[reactionType]) {
+            tempCount[reactionType] = 0;
+          }
+          tempCount[reactionType]++;
+        });
+        
+        postObj.reactionsCount = tempCount;
+        
+        console.log(`📊 Post ${postObj._id} recalculated:`, {
+          reactions: postObj.reactions,
+          reactionsCount: postObj.reactionsCount
+        });
+      }
+      
+      return postObj;
+    });
+    
+    // Đếm tổng số posts để tính hasMore
+    const totalPosts = await Post.countDocuments({ userId: { $in: userIds } });
+    const hasMore = skip + posts.length < totalPosts;
+    
+    // Debug log
+    console.log('Timeline API:', {
+      page,
+      limit,
+      skip,
+      postsReturned: posts.length,
+      totalPosts,
+      hasMore,
+      calculation: `${skip} + ${posts.length} < ${totalPosts} = ${hasMore}`
+    });
+    
+    return res.json({
+      posts: enrichedPosts,
+      hasMore,
+      currentPage: page,
+      totalPages: Math.ceil(totalPosts / limit),
+      totalPosts
+    });
   } catch (err) {
+    console.error('Timeline API Error:', err);
     return res.status(500).json(err);
   }
 });
 
-//GET USER'S POSTS
+//GET USER'S POSTS (with pagination)
 router.get("/:userId/posts", async (req, res) => {
   try {
-    const currentUser = await User.findById(req.params.userId);
-    const userPosts = await Post.find({ userId: currentUser._id });
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
+    const skip = (page - 1) * limit;
 
-    return res.status(200).json(userPosts);
+    const posts = await Post.find({ userId: req.params.userId })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    // Initialize reactionsCount for old posts if not exists
+    const enrichedPosts = posts.map(post => {
+      const postObj = post.toObject();
+      
+      // Convert reactions Map to Object
+      if (postObj.reactions instanceof Map) {
+        postObj.reactions = Object.fromEntries(postObj.reactions);
+      } else if (!postObj.reactions) {
+        postObj.reactions = {};
+      }
+      
+      // Convert reactionsCount Map to Object
+      if (postObj.reactionsCount instanceof Map) {
+        postObj.reactionsCount = Object.fromEntries(postObj.reactionsCount);
+      } else if (!postObj.reactionsCount) {
+        postObj.reactionsCount = {};
+      }
+      
+      return postObj;
+    });
+    
+    const totalPosts = await Post.countDocuments({ userId: req.params.userId });
+    const hasMore = skip + posts.length < totalPosts;
+
+    return res.status(200).json({
+      posts: enrichedPosts,
+      hasMore,
+      currentPage: page,
+      totalPages: Math.ceil(totalPosts / limit),
+      totalPosts
+    });
   } catch (err) {
     return res.status(500).json(err);
   }
 });
 
 // LIKE/UNLIKE POST
+// REACT TO POST (with emoji reactions)
+router.put("/:id/react", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+    const sanitizedReactionType = sanitize(req.sanitize(req.body.reactionType)); // like, love, haha, wow, sad, angry
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    // Validate reaction type
+    const validReactions = ['like', 'love', 'haha', 'wow', 'sad', 'angry'];
+    if (!validReactions.includes(sanitizedReactionType)) {
+      return res.status(400).json({ error: "Loại cảm xúc không hợp lệ" });
+    }
+
+    // Initialize reactions and reactionsCount if not exists
+    if (!post.reactions) {
+      post.reactions = new Map();
+    }
+    if (!post.reactionsCount) {
+      post.reactionsCount = new Map();
+    }
+
+    const currentReaction = post.reactions.get(sanitizedUserId);
+
+    if (currentReaction === sanitizedReactionType) {
+      // Nếu click vào reaction đang có -> bỏ reaction
+      post.reactions.delete(sanitizedUserId);
+      
+      // Giảm count và xóa key nếu = 0
+      const currentCount = post.reactionsCount.get(sanitizedReactionType) || 0;
+      const newCount = Math.max(0, currentCount - 1);
+      
+      if (newCount === 0) {
+        post.reactionsCount.delete(sanitizedReactionType);
+      } else {
+        post.reactionsCount.set(sanitizedReactionType, newCount);
+      }
+      
+      // Cập nhật likes cũ để tương thích
+      post.likes = Array.from(post.reactions.keys());
+      post.likesCount = post.likes.length;
+      
+      await post.save();
+
+      // KHÔNG xóa notification khi bỏ reaction
+      // Giữ lại notification để khi react lại sẽ update thay vì tạo mới
+      // Điều này tránh spam notification
+
+      console.log('✅ Reaction removed:', {
+        postId: sanitizedPostId,
+        reactionsCount: Object.fromEntries(post.reactionsCount),
+        reactions: Object.fromEntries(post.reactions)
+      });
+
+      return res.status(200).json({
+        message: "Đã bỏ cảm xúc",
+        userReaction: null,
+        reactions: Object.fromEntries(post.reactions),
+        reactionsCount: Object.fromEntries(post.reactionsCount),
+        likesCount: post.likesCount,
+      });
+    } else {
+      // Nếu có reaction khác -> giảm count reaction cũ
+      if (currentReaction) {
+        const oldCount = post.reactionsCount.get(currentReaction) || 0;
+        const newOldCount = Math.max(0, oldCount - 1);
+        
+        if (newOldCount === 0) {
+          post.reactionsCount.delete(currentReaction);
+        } else {
+          post.reactionsCount.set(currentReaction, newOldCount);
+        }
+      }
+
+      // Thêm/đổi reaction mới
+      post.reactions.set(sanitizedUserId, sanitizedReactionType);
+      
+      // Tăng count của reaction mới
+      const newCount = (post.reactionsCount.get(sanitizedReactionType) || 0) + 1;
+      post.reactionsCount.set(sanitizedReactionType, newCount);
+      
+      post.likes = Array.from(post.reactions.keys());
+      post.likesCount = post.likes.length;
+      
+      await post.save();
+
+      // Tạo/cập nhật thông báo với reactionType (emoji)
+      // createNotification sẽ tự động:
+      // - Tạo mới nếu chưa có
+      // - Update reactionType nếu đã có (đổi emoji)
+      if (sanitizedUserId !== post.userId) {
+        await createNotification(
+          sanitizedUserId,
+          post.userId,
+          'like',
+          sanitizedPostId,
+          null,
+          '',
+          sanitizedReactionType // Truyền reactionType để lưu emoji
+        );
+      }
+
+      console.log('✅ Reaction added/changed:', {
+        postId: sanitizedPostId,
+        userReaction: sanitizedReactionType,
+        reactionsCount: Object.fromEntries(post.reactionsCount),
+        reactions: Object.fromEntries(post.reactions)
+      });
+
+      return res.status(200).json({
+        message: "Đã thả cảm xúc",
+        userReaction: sanitizedReactionType,
+        reactions: Object.fromEntries(post.reactions),
+        reactionsCount: Object.fromEntries(post.reactionsCount),
+        likesCount: post.likesCount,
+      });
+    }
+  } catch (err) {
+    console.error("React error:", err);
+    return res.status(500).json({ error: "Lỗi server khi xử lý cảm xúc" });
+  }
+});
+
+// GET REACTION STATUS
+router.get("/:id/reaction-status/:userId", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const sanitizedUserId = sanitize(req.sanitize(req.params.userId));
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    const userReaction = post.reactions ? post.reactions.get(sanitizedUserId) : null;
+    
+    // Convert Map to Object, chỉ có những reactions có count > 0
+    const reactionsCount = post.reactionsCount instanceof Map 
+      ? Object.fromEntries(post.reactionsCount)
+      : {};
+
+    return res.status(200).json({
+      userReaction,
+      reactions: post.reactions ? Object.fromEntries(post.reactions) : {},
+      reactionsCount,
+      likesCount: post.likesCount || 0,
+    });
+  } catch (err) {
+    console.error("Get reaction status error:", err);
+    return res.status(500).json({ error: "Lỗi server" });
+  }
+});
+
+// GET REACTORS BY TYPE (danh sách người đã react theo loại emoji)
+router.get("/:id/reactors/:reactionType?", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.id));
+    const reactionType = req.params.reactionType; // optional: like, love, haha, wow, sad, angry
+
+    console.log('🔍 Get reactors request:', { postId: sanitizedPostId, reactionType });
+
+    const post = await Post.findById(sanitizedPostId);
+
+    if (!post) {
+      return res.status(404).json({ error: "Bài viết không tồn tại" });
+    }
+
+    const reactions = post.reactions || new Map();
+    const reactionsObj = reactions instanceof Map ? Object.fromEntries(reactions) : reactions;
+
+    console.log('📊 Post reactions:', reactionsObj);
+
+    // Nếu có reactionType, lọc theo type đó
+    let filteredUserIds = [];
+    if (reactionType) {
+      filteredUserIds = Object.entries(reactionsObj)
+        .filter(([_, type]) => type === reactionType)
+        .map(([userId, _]) => userId);
+      console.log(`🔎 Filtered for "${reactionType}":`, filteredUserIds);
+    } else {
+      // Nếu không có type, lấy tất cả
+      filteredUserIds = Object.keys(reactionsObj);
+      console.log('🔎 All reactors:', filteredUserIds);
+    }
+
+    // Lấy thông tin user
+    const users = await User.find({ _id: { $in: filteredUserIds } })
+      .select('_id displayName profilePicture')
+      .lean();
+
+    console.log('👥 Users found:', users);
+
+    // Map với reaction type của từng user
+    const reactors = users.map(user => ({
+      _id: user._id,
+      username: user.displayName || 'Người dùng',
+      profilePicture: user.profilePicture,
+      reactionType: reactionsObj[user._id.toString()]
+    }));
+
+    console.log('✅ Final reactors:', reactors);
+
+    return res.status(200).json({
+      reactors,
+      count: reactors.length,
+      reactionType: reactionType || 'all'
+    });
+  } catch (err) {
+    console.error("Get reactors error:", err);
+    return res.status(500).json({ error: "Lỗi server" });
+  }
+});
+
 router.put("/:id/like", async (req, res) => {
   try {
     const sanitizedPostId = sanitize(req.sanitize(req.params.id));
@@ -165,7 +539,7 @@ router.put("/:id/like", async (req, res) => {
       }
 
       return res.status(200).json({
-        message: "Đã bỏ thích bài viết",
+        message: "Đã bỏ bày tỏ cảm xúc bài viết",
         isLiked: false,
         likesCount: post.likesCount,
       });
@@ -186,7 +560,7 @@ router.put("/:id/like", async (req, res) => {
       }
 
       return res.status(200).json({
-        message: "Đã thích bài viết",
+        message: "Đã bày tỏ cảm xúc bài viết",
         isLiked: true,
         likesCount: post.likesCount,
       });

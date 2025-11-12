@@ -32,22 +32,44 @@ router.get('/conversations', verifyToken, async (req, res) => {
     })
     .populate('participants', 'displayName profilePicture email lastSeen isOnline')
     .populate('lastMessage')
+    .populate('createdBy', 'displayName')
+    .populate('admins', 'displayName')
     .sort({ lastMessageTime: -1 })
     .limit(20);
 
     // Format data với unread count cho mỗi conversation
     const formattedConversations = await Promise.all(conversations.map(async conv => {
-      const otherParticipant = conv.participants && conv.participants.find(p => p && p._id && p._id.toString() !== userId);
-      
       // Tính số tin nhắn chưa đọc trong conversation này
+      // Dùng readBy thay vì isRead để mỗi user có unread count riêng
       const unreadCount = await Message.countDocuments({
         conversationId: conv._id,
         sender: { $ne: userId }, // Không phải tin nhắn của mình
-        isRead: false
+        'readBy.user': { $ne: userId } // User chưa đọc
       });
+      
+      // Xử lý group chat
+      if (conv.isGroup) {
+        return {
+          _id: conv._id,
+          isGroup: true,
+          groupName: conv.groupName,
+          groupAvatar: conv.groupAvatar,
+          participants: conv.participants,
+          admins: conv.admins,
+          createdBy: conv.createdBy,
+          lastMessage: conv.lastMessage || null,
+          lastMessageTime: conv.lastMessageTime || conv.createdAt,
+          unread: unreadCount,
+          createdAt: conv.createdAt
+        };
+      }
+      
+      // Xử lý 1-1 chat
+      const otherParticipant = conv.participants && conv.participants.find(p => p && p._id && p._id.toString() !== userId);
       
       return {
         _id: conv._id,
+        isGroup: false,
         participant: otherParticipant || { displayName: 'Unknown User', profilePicture: null, email: '' },
         lastMessage: conv.lastMessage || null,
         lastMessageTime: conv.lastMessageTime || conv.createdAt,
@@ -224,7 +246,20 @@ router.post('/conversations/:conversationId/messages', verifyToken, async (req, 
         .populate('participants', 'displayName profilePicture email lastSeen isOnline');
       
       if (updatedConversation) {
+        // Emit to conversation room for users who have it open
         io.emitConversationUpdate(updatedConversation, updatedConversation.participants.map(p => p._id.toString()));
+        
+        // ALSO emit to each participant's personal room for unread count updates
+        // This ensures TheHeader and SidebarLeft get notified even if popup is closed
+        io.emitNewMessageToParticipants({
+          _id: newMessage._id,
+          content: newMessage.content,
+          messageType: newMessage.messageType,
+          file: newMessage.file,
+          sender: senderData,
+          createdAt: newMessage.createdAt,
+          conversationId
+        }, conversationId, updatedConversation.participants, userId);
       }
     }
 
@@ -313,15 +348,15 @@ router.put('/conversations/:conversationId/read', verifyToken, async (req, res) 
     const userId = req.user.id;
     const conversationId = sanitize(req.params.conversationId);
 
-    // Đánh dấu tất cả messages chưa đọc trong conversation
+    // Đánh dấu tất cả messages của người khác mà user chưa đọc
     await Message.updateMany(
       {
         conversationId,
         sender: { $ne: userId },
-        isRead: false
+        'readBy.user': { $ne: userId } // Chỉ update messages mà user này chưa đọc
       },
       {
-        $set: { isRead: true },
+        $set: { isRead: true }, // Giữ lại cho backward compatibility
         $push: {
           readBy: {
             user: userId,
@@ -356,6 +391,245 @@ router.get('/unread-count', verifyToken, async (req, res) => {
     res.status(200).json({ count: unreadCount });
   } catch (error) {
     console.error('Get unread count error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ========== GROUP CHAT ROUTES ==========
+
+// POST - Tạo nhóm chat mới
+router.post('/groups', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { groupName, memberIds } = req.body;
+
+    if (!groupName || !groupName.trim()) {
+      return res.status(400).json({ error: 'Group name is required' });
+    }
+
+    if (!memberIds || !Array.isArray(memberIds) || memberIds.length < 2) {
+      return res.status(400).json({ error: 'At least 2 members are required' });
+    }
+
+    // Thêm creator vào danh sách participants
+    const allParticipants = [...new Set([userId, ...memberIds])];
+
+    // Kiểm tra tất cả members có tồn tại không
+    const existingUsers = await User.find({ _id: { $in: allParticipants } });
+    if (existingUsers.length !== allParticipants.length) {
+      return res.status(400).json({ error: 'Some users not found' });
+    }
+
+    // Tạo group conversation
+    const newGroup = new Conversation({
+      isGroup: true,
+      groupName: groupName.trim(),
+      participants: allParticipants,
+      admins: [userId], // Creator là admin
+      createdBy: userId
+    });
+
+    await newGroup.save();
+    await newGroup.populate('participants', 'displayName profilePicture email');
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io && io.emitGroupCreated) {
+      io.emitGroupCreated(newGroup, allParticipants);
+    }
+
+    res.status(201).json(newGroup);
+  } catch (error) {
+    console.error('Create group error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST - Thêm member vào nhóm
+router.post('/groups/:conversationId/members', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = sanitize(req.params.conversationId);
+    const { memberIds } = req.body;
+
+    if (!memberIds || !Array.isArray(memberIds) || memberIds.length === 0) {
+      return res.status(400).json({ error: 'Member IDs are required' });
+    }
+
+    const conversation = await Conversation.findById(conversationId);
+    
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Kiểm tra quyền admin
+    if (!conversation.admins.includes(userId)) {
+      return res.status(403).json({ error: 'Only admins can add members' });
+    }
+
+    // Thêm members mới (không trùng lặp)
+    const newMembers = memberIds.filter(id => !conversation.participants.includes(id));
+    conversation.participants.push(...newMembers);
+    await conversation.save();
+
+    await conversation.populate('participants', 'displayName profilePicture email');
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io && io.emitMemberAdded) {
+      io.emitMemberAdded(conversationId, newMembers, conversation.participants);
+    }
+
+    res.status(200).json(conversation);
+  } catch (error) {
+    console.error('Add member error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// DELETE - Xóa member khỏi nhóm
+router.delete('/groups/:conversationId/members/:memberId', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = sanitize(req.params.conversationId);
+    const memberId = sanitize(req.params.memberId);
+
+    const conversation = await Conversation.findById(conversationId);
+    
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Kiểm tra quyền (admin hoặc tự xóa mình)
+    if (!conversation.admins.includes(userId) && userId !== memberId) {
+      return res.status(403).json({ error: 'Permission denied' });
+    }
+
+    // Không cho xóa creator
+    if (memberId === conversation.createdBy.toString()) {
+      return res.status(400).json({ error: 'Cannot remove group creator' });
+    }
+
+    // Xóa member
+    conversation.participants = conversation.participants.filter(p => p.toString() !== memberId);
+    conversation.admins = conversation.admins.filter(a => a.toString() !== memberId);
+    await conversation.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io && io.emitMemberRemoved) {
+      io.emitMemberRemoved(conversationId, memberId, conversation.participants);
+    }
+
+    res.status(200).json({ message: 'Member removed successfully' });
+  } catch (error) {
+    console.error('Remove member error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT - Cập nhật thông tin nhóm
+router.put('/groups/:conversationId', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = sanitize(req.params.conversationId);
+    const { groupName, groupAvatar } = req.body;
+
+    const conversation = await Conversation.findById(conversationId);
+    
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Kiểm tra quyền admin
+    if (!conversation.admins.includes(userId)) {
+      return res.status(403).json({ error: 'Only admins can update group info' });
+    }
+
+    if (groupName) conversation.groupName = groupName.trim();
+    if (groupAvatar) conversation.groupAvatar = groupAvatar;
+    
+    await conversation.save();
+    await conversation.populate('participants', 'displayName profilePicture email');
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io && io.emitGroupUpdated) {
+      io.emitGroupUpdated(conversation, conversation.participants);
+    }
+
+    res.status(200).json(conversation);
+  } catch (error) {
+    console.error('Update group error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST - Promote member to admin
+router.post('/groups/:conversationId/admins/:memberId', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = sanitize(req.params.conversationId);
+    const memberId = sanitize(req.params.memberId);
+
+    const conversation = await Conversation.findById(conversationId);
+    
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Chỉ creator mới có thể promote admin
+    if (userId !== conversation.createdBy.toString()) {
+      return res.status(403).json({ error: 'Only group creator can promote admins' });
+    }
+
+    if (!conversation.participants.includes(memberId)) {
+      return res.status(400).json({ error: 'User is not a member of this group' });
+    }
+
+    if (!conversation.admins.includes(memberId)) {
+      conversation.admins.push(memberId);
+      await conversation.save();
+    }
+
+    res.status(200).json({ message: 'Member promoted to admin successfully' });
+  } catch (error) {
+    console.error('Promote admin error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST - Rời khỏi nhóm
+router.post('/groups/:conversationId/leave', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const conversationId = sanitize(req.params.conversationId);
+
+    const conversation = await Conversation.findById(conversationId);
+    
+    if (!conversation || !conversation.isGroup) {
+      return res.status(404).json({ error: 'Group not found' });
+    }
+
+    // Creator không thể rời nhóm
+    if (userId === conversation.createdBy.toString()) {
+      return res.status(400).json({ error: 'Group creator cannot leave the group. Please transfer ownership first.' });
+    }
+
+    // Xóa user khỏi participants và admins
+    conversation.participants = conversation.participants.filter(p => p.toString() !== userId);
+    conversation.admins = conversation.admins.filter(a => a.toString() !== userId);
+    await conversation.save();
+
+    // Emit socket event
+    const io = req.app.get('io');
+    if (io && io.emitMemberRemoved) {
+      io.emitMemberRemoved(conversationId, userId, conversation.participants);
+    }
+
+    res.status(200).json({ message: 'Left group successfully' });
+  } catch (error) {
+    console.error('Leave group error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

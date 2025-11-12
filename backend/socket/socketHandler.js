@@ -108,6 +108,13 @@ module.exports = (io) => {
 
   // Utility functions to emit events from routes
   io.emitNewNotification = (notification, userId) => {
+    console.log(`🔔 [SocketHandler] Emitting notification to user_${userId}:`, {
+      notificationId: notification._id,
+      type: notification.type,
+      fromUser: notification.fromUser?.displayName || notification.fromUser,
+      message: notification.message,
+      fullNotification: notification
+    });
     io.to(`user_${userId}`).emit('new_notification', notification);
   };
 
@@ -130,7 +137,34 @@ module.exports = (io) => {
       content: message.content?.substring(0, 50) + '...',
       fullMessage: message
     });
-    io.to(`conversation_${conversationId}`).emit('newMessage', message);
+    
+    // Emit with conversationId included for frontend validation
+    io.to(`conversation_${conversationId}`).emit('newMessage', {
+      conversationId: conversationId,
+      message: message
+    });
+  };
+
+  // Emit new message to participant's personal rooms (for unread count updates)
+  io.emitNewMessageToParticipants = (message, conversationId, participantIds, senderId) => {
+    console.log(`📬 [SocketHandler] Emitting new message notification to participants:`, {
+      messageId: message._id,
+      conversationId: conversationId,
+      participants: participantIds,
+      sender: senderId
+    });
+    
+    // Emit to each participant's personal room (except sender)
+    participantIds.forEach(participantId => {
+      const participantIdStr = participantId._id ? participantId._id.toString() : participantId.toString();
+      if (participantIdStr !== senderId.toString()) {
+        console.log(`  → Emitting to user_${participantIdStr}`);
+        io.to(`user_${participantIdStr}`).emit('newMessageNotification', {
+          conversationId: conversationId,
+          message: message
+        });
+      }
+    });
   };
 
   // Emit conversation update to participants
@@ -141,6 +175,69 @@ module.exports = (io) => {
     });
     participantIds.forEach(userId => {
       io.to(`user_${userId}`).emit('conversationUpdate', conversation);
+    });
+  };
+
+  // GROUP CHAT SOCKET EVENTS
+
+  // Emit group created event
+  io.emitGroupCreated = (group, participantIds) => {
+    console.log(`👥 [SocketHandler] Emitting group created to participants:`, {
+      groupId: group._id,
+      groupName: group.groupName,
+      participants: participantIds
+    });
+    participantIds.forEach(userId => {
+      io.to(`user_${userId}`).emit('groupCreated', group);
+    });
+  };
+
+  // Emit member added event
+  io.emitMemberAdded = (conversationId, newMemberIds, allParticipants) => {
+    console.log(`➕ [SocketHandler] Emitting member added to group ${conversationId}:`, {
+      newMembers: newMemberIds
+    });
+    // Notify existing members
+    allParticipants.forEach(participant => {
+      const userId = participant._id ? participant._id.toString() : participant.toString();
+      io.to(`user_${userId}`).emit('memberAdded', {
+        conversationId,
+        newMemberIds,
+        allParticipants
+      });
+    });
+  };
+
+  // Emit member removed event
+  io.emitMemberRemoved = (conversationId, removedMemberId, remainingParticipants) => {
+    console.log(`➖ [SocketHandler] Emitting member removed from group ${conversationId}:`, {
+      removedMember: removedMemberId
+    });
+    // Notify removed member
+    io.to(`user_${removedMemberId}`).emit('memberRemoved', {
+      conversationId,
+      removedMemberId
+    });
+    // Notify remaining members
+    remainingParticipants.forEach(participant => {
+      const userId = participant._id ? participant._id.toString() : participant.toString();
+      io.to(`user_${userId}`).emit('memberRemoved', {
+        conversationId,
+        removedMemberId,
+        remainingParticipants
+      });
+    });
+  };
+
+  // Emit group updated event
+  io.emitGroupUpdated = (group, participantIds) => {
+    console.log(`🔄 [SocketHandler] Emitting group updated:`, {
+      groupId: group._id,
+      groupName: group.groupName
+    });
+    participantIds.forEach(participant => {
+      const userId = participant._id ? participant._id.toString() : participant.toString();
+      io.to(`user_${userId}`).emit('groupUpdated', group);
     });
   };
 };

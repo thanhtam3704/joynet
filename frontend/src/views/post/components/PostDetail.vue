@@ -36,7 +36,12 @@
         <ProfileImage :id="posts.userId"  />
 
         <div class="post__user-content">
-          <PostDisplayName :id="posts.userId" />
+          <div class="post-user-info">
+            <PostDisplayName :id="posts.userId" />
+            <span class="post-time" v-if="posts.createdAt">
+              {{ formatFullDateTime(posts.createdAt) }}
+            </span>
+          </div>
           <p class="text-post__content" v-if="posts.description">
             {{ posts.description }}
           </p>
@@ -47,99 +52,72 @@
           />
         </div>
       </div>
-      <div class="post-stats">
-        <HoverUserList :post-id="String(id)" type="likes" :refresh-key="likesCount" container-selector=".post-detail">
-          <div class="stats-likes" aria-label="Lượt thích">
-            <span class="stats-like-icon">👍</span>
-            <span class="stats-likes-number">{{ formatCompact(likesCount) }}</span>
-          </div>
-        </HoverUserList>
-        <HoverUserList :post-id="String(id)" type="comments" :refresh-key="comments.length" container-selector=".post-detail">
-          <div class="stats-comments" @click="scrollToComments" aria-label="Đi tới bình luận">
-            {{ comments.length }} bình luận
-          </div>
-        </HoverUserList>
-      </div>
+
+      <!-- Reactions Summary (replaces old stats) -->
+      <ReactionsSummary
+        v-if="likesCount > 0 || comments.length > 0"
+        :post-id="String(id)"
+        :reactions-count="reactionsCount || {}"
+        :total-likes="likesCount"
+        :total-comments="comments.length"
+        @show-reactors="(reactionType) => showReactorsModal(reactionType)"
+        @show-all-reactors="showAllReactorsModal"
+        @show-comments="scrollToComments"
+      />
+
       <!-- Action Bar - Like & Comment (reusable) -->
       <LikeActionBar
         :post-id="String(id)"
         :initial-liked="isLiked"
         :initial-likes-count="likesCount"
+        :initial-user-reaction="userReaction"
+        :initial-reactions-count="reactionsCount"
         @comment="focusCommentInput"
-        @updated="({ isLiked: l, likesCount: c }) => { isLiked = l; likesCount = c; }"
+        @updated="({ isLiked: l, likesCount: c, userReaction: r, reactionsCount: rc }) => { 
+          isLiked = l; 
+          likesCount = c; 
+          userReaction = r;
+          reactionsCount = rc;
+        }"
       />
 
       <!-- Comments Section -->
-      <div class="comments-section">
+      <div class="comments-section" ref="commentsSection">
         <h3 class="comments-title">Bình luận</h3>
         <div class="comments" v-if="comments.length > 0">
-          <!-- Hiển thị 1 comment đầu tiên -->
           <div
             class="comment"
-            v-if="comments.length > 0"
-            :data-comment-id="comments[0]._id"
+            v-for="comment in comments"
+            :key="comment._id"
+            :data-comment-id="comment._id"
             :class="{
-              'comment--text-only': comments[0].comment && !comments[0].file,
-              'comment--image-only': !comments[0].comment && comments[0].file,
-              'comment--text-and-image':
-                comments[0].comment && comments[0].file,
+              'comment--text-only': comment.comment && !comment.file,
+              'comment--image-only': !comment.comment && comment.file,
+              'comment--text-and-image': comment.comment && comment.file,
             }"
           >
-            <ProfileImage :id="comments[0].userId" class="comment-avatar" />
+            <ProfileImage :id="comment.userId" class="comment-avatar" />
             <div class="comment__content">
-              <PostDisplayName :id="comments[0].userId" />
-              <p class="text-post__content" v-if="comments[0].comment">
-                {{ comments[0].comment }}
+              <PostDisplayName :id="comment.userId" />
+              <p class="text-post__content" v-if="comment.comment">
+                {{ comment.comment }}
               </p>
               <img
-                v-if="comments[0].file"
+                v-if="comment.file"
                 class="comment-img"
-                :src="`http://localhost:3000/uploads/${comments[0].file}`"
+                :src="`http://localhost:3000/uploads/${comment.file}`"
               />
             </div>
           </div>
 
-          <!-- Nút Xem thêm bình luận -->
-          <button
-            v-if="!showAllComments && comments.length > 1"
-            @click="toggleAllComments"
-            class="view-more-btn"
-          >
-            Xem thêm {{ comments.length - 1 }} bình luận
-          </button>
-
-          <!-- Hiển thị tất cả comments còn lại khi showAllComments = true -->
-          <div v-if="showAllComments" class="additional-comments">
-            <div
-              class="comment"
-              v-for="(comment, index) in comments.slice(1)"
-              :key="comment._id"
-              :data-comment-id="comment._id"
-              :class="{
-                'comment--text-only': comment.comment && !comment.file,
-                'comment--image-only': !comment.comment && comment.file,
-                'comment--text-and-image': comment.comment && comment.file,
-              }"
-            >
-              <ProfileImage :id="comment.userId" class="comment-avatar" />
-              <div class="comment__content">
-                <PostDisplayName :id="comment.userId" />
-                <p class="text-post__content" v-if="comment.comment">
-                  {{ comment.comment }}
-                </p>
-                <img
-                  v-if="comment.file"
-                  class="comment-img"
-                  :src="`http://localhost:3000/uploads/${comment.file}`"
-                />
-              </div>
-            </div>
-
-            <!-- Nút Ẩn bớt bình luận -->
-            <button @click="toggleAllComments" class="view-more-btn">
-              Ẩn bớt bình luận
-            </button>
+          <!-- Loading more comments indicator -->
+          <div v-if="loadingMoreComments" class="loading-more-comments">
+            <sync-loader :color="'#667eea'" :size="'8px'"></sync-loader>
+            <span>Đang tải thêm bình luận...</span>
           </div>
+
+          <!-- Load more trigger -->
+          <div ref="loadMoreTrigger" class="load-more-trigger"></div>
         </div>
         <div v-else class="no-comments">
           Chưa có bình luận nào. Hãy là người đầu tiên bình luận!
@@ -196,12 +174,24 @@
 import ProfileImage from "@/components/ProfileImage";
 import PostDisplayName from "@/components/PostDisplayName";
 import LikeActionBar from "@/components/LikeActionBar.vue";
+import ReactionsSummary from "@/components/ReactionsSummary.vue";
 import SyncLoader from "vue-spinner/src/SyncLoader.vue";
 import { Skeletor } from "vue-skeletor";
 import { createToast } from "mosha-vue-toastify";
 import HoverUserList from '@/components/HoverUserList';
+import { getTimeAgo, formatDateTime } from '@/utils/timeUtils';
+
 export default {
   name: "PostDetail",
+  components: { 
+    ProfileImage, 
+    SyncLoader, 
+    Skeletor, 
+    PostDisplayName, 
+    LikeActionBar, 
+    ReactionsSummary,
+    HoverUserList 
+  },
   props: {
     id: {
       required: true
@@ -215,7 +205,6 @@ export default {
       default: false
     }
   },
-  components: { ProfileImage, SyncLoader, Skeletor, PostDisplayName, LikeActionBar, HoverUserList },
   data() {
     return {
       posts: [],
@@ -229,8 +218,17 @@ export default {
       color: "pink",
       isLiked: false,
       likesCount: 0,
+      userReaction: null,
+      reactionsCount: {},
       likeLoading: false,
       showAllComments: false,
+      allComments: [], // Store all comments from API
+      // Pagination for comments
+      commentsPage: 1,
+      commentsPerPage: 10,
+      hasMoreComments: true,
+      loadingMoreComments: false,
+      commentsObserver: null,
     };
   },
   async created() {
@@ -255,6 +253,12 @@ export default {
       },
     },
   },
+  beforeUnmount() {
+    // Clean up intersection observer
+    if (this.commentsObserver) {
+      this.commentsObserver.disconnect();
+    }
+  },
   methods: {
   async loadPostData() {
       this.isSkeletorLoading = true;
@@ -269,7 +273,7 @@ export default {
       console.log("Converted postId:", postId);
 
     try {
-  const { getPost, getPostComments, getLikeStatus, getLikesCount } = await import('@/api/posts');
+  const { getPost, getPostComments, getReactionStatus, getLikesCount } = await import('@/api/posts');
 
         console.log("Calling getPost API with postId:", postId);
         const responsePost = await getPost(postId);
@@ -283,18 +287,22 @@ export default {
           if (!this.posts || !this.posts._id) {
             console.error("Post data is null or missing _id:", this.posts);
           }
-          // Khởi tạo trạng thái like từ API chuyên biệt (ổn định hơn)
+          // Khởi tạo trạng thái reaction từ API chuyên biệt (ổn định hơn)
           const currentUserId = this.$store?.state?.user?._id;
           if (currentUserId) {
             try {
-              const likeStatus = await getLikeStatus(postId, currentUserId);
-              if (likeStatus.status === 200) {
-                this.isLiked = !!likeStatus.data?.isLiked;
-                this.likesCount = likeStatus.data?.likesCount ?? (this.posts?.likesCount || 0);
+              const reactionStatus = await getReactionStatus(postId, currentUserId);
+              if (reactionStatus.status === 200) {
+                this.userReaction = reactionStatus.data?.userReaction || null;
+                this.reactionsCount = reactionStatus.data?.reactionsCount || {};
+                this.isLiked = !!reactionStatus.data?.userReaction;
+                this.likesCount = reactionStatus.data?.likesCount ?? (this.posts?.likesCount || 0);
               }
             } catch (e) {
               // Fallback nếu API phụ lỗi
               this.likesCount = this.posts?.likesCount || 0;
+              this.userReaction = null;
+              this.reactionsCount = {};
               this.isLiked = Array.isArray(this.posts?.likes)
                 ? this.posts.likes.includes(currentUserId)
                 : false;
@@ -319,8 +327,18 @@ export default {
         console.log("Comments API response:", responseComment);
         
         if (responseComment.status === 200) {
-          this.comments = responseComment.data;
-          console.log("Comments loaded:", this.comments.length, this.comments);
+          const allComments = responseComment.data || [];
+          // Load first page of comments only
+          this.comments = allComments.slice(0, this.commentsPerPage);
+          this.hasMoreComments = allComments.length > this.commentsPerPage;
+          this.allComments = allComments; // Store all for pagination
+          this.commentsPage = 1;
+          console.log("Comments loaded:", this.comments.length, "of", allComments.length);
+          
+          // Setup intersection observer after comments loaded
+          this.$nextTick(() => {
+            this.setupIntersectionObserver();
+          });
         } else {
           console.error("Failed to load comments:", responseComment.status);
           console.error("Comments response data:", responseComment.data);
@@ -356,9 +374,76 @@ export default {
     focusCommentInput() {
       this.$refs.commentTextarea.focus();
     },
+    showReactorsModal(reactionType) {
+      // TODO: Hiển thị modal danh sách người đã react với emoji này
+      console.log('Show reactors for reaction:', reactionType);
+      // Tạm thời emit để component cha xử lý
+      this.$emit('show-reactors', { postId: this.id, reactionType });
+    },
+    showAllReactorsModal() {
+      // TODO: Hiển thị modal tất cả người đã react
+      console.log('Show all reactors for post:', this.id);
+      // Tạm thời emit để component cha xử lý
+      this.$emit('show-all-reactors', this.id);
+    },
 
     toggleAllComments() {
       this.showAllComments = !this.showAllComments;
+    },
+    
+    loadMoreComments() {
+      if (this.loadingMoreComments || !this.hasMoreComments) {
+        return;
+      }
+      
+      this.loadingMoreComments = true;
+      
+      // Simulate delay for loading
+      setTimeout(() => {
+        const startIndex = this.commentsPage * this.commentsPerPage;
+        const endIndex = startIndex + this.commentsPerPage;
+        const nextComments = this.allComments.slice(startIndex, endIndex);
+        
+        if (nextComments.length > 0) {
+          this.comments.push(...nextComments);
+          this.commentsPage++;
+          this.hasMoreComments = endIndex < this.allComments.length;
+        } else {
+          this.hasMoreComments = false;
+        }
+        
+        this.loadingMoreComments = false;
+      }, 300); // Small delay for better UX
+    },
+    
+    setupIntersectionObserver() {
+      // Clean up existing observer
+      if (this.commentsObserver) {
+        this.commentsObserver.disconnect();
+      }
+      
+      // Setup new observer
+      const options = {
+        root: null,
+        rootMargin: '100px', // Trigger 100px before reaching the element
+        threshold: 0.1
+      };
+      
+      this.commentsObserver = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting && this.hasMoreComments && !this.loadingMoreComments) {
+            this.loadMoreComments();
+          }
+        });
+      }, options);
+      
+      // Observe the trigger element
+      this.$nextTick(() => {
+        const trigger = this.$refs.loadMoreTrigger;
+        if (trigger) {
+          this.commentsObserver.observe(trigger);
+        }
+      });
     },
 
     onFileChange() {
@@ -402,7 +487,15 @@ export default {
 
         if (response.status === 200) {
           const data = response.data;
-          this.comments.push(data);
+          // Add to both arrays
+          this.allComments.unshift(data); // Add to beginning of all comments
+          this.comments.unshift(data); // Add to beginning of displayed comments
+
+          // Emit event to parent to update post commentsCount
+          this.$emit('comment-added', {
+            postId: postId,
+            newCommentsCount: this.allComments.length
+          });
 
           // Reset form
           this.commentModel = "";
@@ -481,27 +574,52 @@ export default {
         }, 500);
       }
     },
+    getTimeAgo(timestamp) {
+      return getTimeAgo(timestamp);
+    },
+    formatFullDateTime(timestamp) {
+      return formatDateTime(timestamp, true);
+    },
   },
 };
 </script>
 
 <style lang="scss" scoped>
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .fb-modal-header {
   position: sticky;
   top: 0;
   left: 0;
   right: 0;
   width: 100%;
-  background: #fff;
-  border-radius: 12px 12px 0 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  border-bottom: 1px solid #eee;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+  backdrop-filter: blur(12px);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 2px 12px rgba(102, 126, 234, 0.08);
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
   z-index: 20;
-  padding: 12px 24px 12px 24px;
-  min-height: 50px;
+  padding: 1.25rem 1.75rem;
+  min-height: 60px;
   overflow: visible;
   margin-top: 0;
+  animation: slideDown 0.3s ease;
 }
+
 .fb-modal-header__flex {
   display: flex;
   flex-direction: row;
@@ -511,44 +629,56 @@ export default {
   min-width: 0;
   position: relative;
 }
+
 .fb-modal-header__title {
-  font-size: 1em;
-  font-weight: 500;
-  color: #222;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #1f2937;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 0.5rem;
   width: 100%;
   text-align: center;
+  letter-spacing: -0.01em;
 }
+
 .fb-modal-header__user {
-  font-size: 1em;
-  font-weight: 500;
-  color: #222;
+  font-size: 1.125rem;
+  font-weight: 700;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
+
 .fb-modal-header__close {
   position: absolute;
-  top: 55%;
-  right: -10px;
+  top: 50%;
+  right: -0.5rem;
   transform: translateY(-50%);
-  background: #e5e7eb;
+  background: rgba(102, 126, 234, 0.08);
   border: none;
   border-radius: 50%;
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.7rem;
-  color: #222;
+  font-size: 1.75rem;
+  color: #667eea;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   flex-shrink: 0;
-  z-index: 2;
+  z-index: 21;
+  font-weight: 300;
 }
+
 .fb-modal-header__close:hover {
-  background: #d1d5db;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transform: translateY(-50%) rotate(90deg) scale(1.05);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 .post-detail {
   width: 100%;
@@ -557,32 +687,47 @@ export default {
   display: flex;
   flex-direction: column;
   position: relative;
-  padding-top: 0; /* Không để khoảng cách phía trên, header dính sát modal */
-  max-height: 80vh; /* Giới hạn chiều cao để đảm bảo scroll hoạt động đúng */
-  overflow-x: hidden; /* Ẩn thanh cuộn ngang */
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE & Edge */
+  padding-top: 0;
+  max-height: 85vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 126, 234, 0.3) transparent;
+  background: white;
+  border-radius: 18px;
+}
+
+.post-detail::-webkit-scrollbar {
+  width: 6px;
+}
+
+.post-detail::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.post-detail::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.3);
+  border-radius: 10px;
+  transition: background 0.2s ease;
+}
+
+.post-detail::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.5);
 }
 
 .timeline__text-post {
-  padding: 1.5rem;
+  padding: 2rem;
   display: flex;
   justify-content: flex-start;
   flex-direction: column;
-  background-color: white;
-  margin-bottom: 0; /* Loại bỏ margin để không có khoảng trống giữa nội dung và comment box */
-  transform: translate(
-    0,
-    0
-  ); /* Loại bỏ transform để tránh vấn đề với sticky positioning */
-  transition: 0.4s;
+  background: white;
+  margin-bottom: 0;
+  transform: translate(0, 0);
+  transition: all 0.3s ease;
 }
 
 .timeline__text-post:hover {
-  transition: 0.4s;
-  box-shadow: rgb(233, 191, 191) 3px 3px 6px 0px inset,
-    rgba(255, 255, 255, 0.5) -3px -3px 6px 1px inset;
-  /* Loại bỏ transform để không ảnh hưởng đến layout */
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
 }
 
 /* Avatar trong phần main post: dùng cùng style với Timeline (40x40, tròn) */
@@ -627,15 +772,51 @@ export default {
   max-width: 100%;
 }
 
+.post-user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.post-time {
+  font-size: 0.8125rem;
+  color: #94a3b8;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  cursor: help;
+  transition: color 0.2s ease;
+}
+
+.post-time::before {
+  content: '•';
+  font-size: 0.625rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.post-time:hover {
+  color: #667eea;
+}
+
 .comments-section {
   width: 100%;
+  margin-top: 1.5rem;
 }
 
 .comments-title {
-  font-size: 1.1rem;
-  font-weight: 600;
-  margin-bottom: 1rem;
-  color: #333;
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 1.25rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
 }
 
 .comments {
@@ -647,14 +828,17 @@ export default {
 }
 
 .no-comments {
-  color: #777;
+  color: #9ca3af;
   font-style: italic;
-  padding: 1rem 0;
+  padding: 2rem;
   text-align: center;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+  border-radius: 12px;
+  border: 2px dashed rgba(102, 126, 234, 0.2);
 }
 
 .additional-comments {
-  margin-top: 0.5rem;
+  margin-top: 0.75rem;
   width: 100%;
 }
 
@@ -662,22 +846,27 @@ export default {
   margin-top: 1rem;
   display: flex;
   flex-direction: row;
+  animation: fadeIn 0.3s ease;
 }
 
 .comment__content {
-  /* Ensure the width adjusts to the content */
-  display: inline-block; /* Change to inline-block for content-based width */
-  max-width: 100%; /* Prevent overflow */
-  word-wrap: break-word; /* Handle long words */
-  box-sizing: border-box; /* Include padding and border in width */
-  padding: 0.25rem;
-  align-items: flex-start; /* Đảm bảo tất cả các phần tử con đều căn trái */
-  box-sizing: border-box; /* Đảm bảo padding không làm tăng kích thước */
-  background-color: #f5f5f7; /* Đồng nhất màu nền */
-  border: 1px solid #e0e0e5;
+  display: inline-block;
+  max-width: 100%;
+  word-wrap: break-word;
+  box-sizing: border-box;
+  padding: 1rem 1.25rem;
+  align-items: flex-start;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.04) 0%, rgba(118, 75, 162, 0.04) 100%);
+  border: 1px solid rgba(102, 126, 234, 0.1);
   border-radius: 18px;
-  padding: 1rem;
-  width: fit-content; /* Thay đổi để co giãn theo nội dung */
+  width: fit-content;
+  transition: all 0.3s ease;
+}
+
+.comment__content:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border-color: rgba(102, 126, 234, 0.2);
+  transform: translateX(2px);
 }
 
 .btn-textadd {
@@ -878,47 +1067,63 @@ export default {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.25rem 0.25rem;
-  margin: 0.25rem 0 0.5rem 0;
-  color: #65676b;
+  padding: 0.5rem 0.25rem;
+  margin: 0.75rem 0;
+  color: #6b7280;
+  font-size: 0.9rem;
 }
 
 .stats-likes {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
+}
+
+.stats-likes:hover {
+  background: rgba(102, 126, 234, 0.05);
 }
 
 .stats-like-icon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
-  background: #1877f2;
-  color: #fff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13px;
+  box-shadow: 0 2px 6px rgba(102, 126, 234, 0.3);
 }
 
 .stats-likes-number {
-  font-weight: 500;
+  font-weight: 600;
+  color: #667eea;
 }
 
 .stats-comments {
   cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  padding: 0.25rem 0.5rem;
+  border-radius: 8px;
 }
 
 .stats-comments:hover {
-  text-decoration: underline;
+  color: #667eea;
+  background: rgba(102, 126, 234, 0.05);
 }
 
 .comment-input-box {
   display: flex;
   align-items: flex-start;
-  padding: 1rem;
-  margin-top: 1rem;
-  gap: 0.75rem;
+  padding: 1.5rem;
+  margin-top: 0;
+  gap: 1rem;
 }
 
 /* Sticky footer styling */
@@ -927,21 +1132,33 @@ export default {
   bottom: 0;
   left: 0;
   right: 0;
-  background: white;
-  box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -2px 12px rgba(102, 126, 234, 0.1);
   margin: 0;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 18px 18px;
   z-index: 10;
+  border-top: 1px solid rgba(102, 126, 234, 0.1);
 }
 
 /* Avatar trong danh sách comment và ô nhập bình luận */
 .comment-avatar {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   object-fit: cover;
   flex-shrink: 0;
-  margin-right: 0.75rem;
+  margin-right: 0;
+  border: 3px solid transparent;
+  background: linear-gradient(white, white) padding-box,
+              linear-gradient(135deg, #667eea, #764ba2) border-box;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+  transition: all 0.3s ease;
+}
+
+.comment-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
 }
 
 .comment-input-container {
@@ -959,35 +1176,42 @@ export default {
 }
 
 .comment-textarea {
-  width: 80%; /* Đặt chiều rộng của textarea là 80% */
-  min-height: 40px;
-  padding: 0.75rem;
-  padding-right: 90px; /* Tạo khoảng trống cho các icon */
-  border: 1px solid #e0e0e0;
-  border-radius: 20px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.875rem 5.5rem 0.875rem 1rem;
+  border: 2px solid rgba(102, 126, 234, 0.15);
+  border-radius: 24px;
   resize: none;
   font-family: inherit;
-  font-size: 0.9rem;
+  font-size: 0.9375rem;
   outline: none;
-  transition: border-color 0.3s ease;
-  float: left; /* Giúp các nút không bị che khuất */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  background: rgba(102, 126, 234, 0.02);
+  color: #1f2937;
+}
+
+.comment-textarea::placeholder {
+  color: #9ca3af;
 }
 
 .comment-textarea:focus {
-  border-color: #007bff;
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
 }
 
 .input-actions {
   position: absolute;
-  right: 20px; /* Di chuyển các nút sang phải để phù hợp với textarea 80% */
+  right: 0.75rem;
   top: 50%;
   transform: translateY(-50%);
   display: flex;
   align-items: center;
-  gap: 0.3rem;
-  padding-right: 5px;
-  height: 30px;
-  z-index: 15; /* Tăng z-index để đảm bảo luôn ở trên cùng */
+  gap: 0.375rem;
+  padding-right: 0.25rem;
+  height: 36px;
+  z-index: 15;
 }
 
 .comment-actions {
@@ -1003,92 +1227,99 @@ export default {
 }
 
 .attach-btn {
-  background: none;
+  background: rgba(102, 126, 234, 0.08);
   border: none;
-  font-size: 1.2rem;
+  font-size: 1.125rem;
   cursor: pointer;
   padding: 0.5rem;
   border-radius: 50%;
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 36px;
+  height: 36px;
   position: relative;
-  z-index: 10; /* Đảm bảo có thể click được */
+  z-index: 16;
+  color: #667eea;
 }
 
 .attach-btn:hover {
   transform: scale(1.1);
-  color: #007bff;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
 }
 
 .attach-btn.active-upload {
-  color: #007bff;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
   position: relative;
 }
 
 .attach-btn.active-upload::after {
   content: "";
   position: absolute;
-  width: 8px;
-  height: 8px;
-  background-color: #007bff;
+  width: 10px;
+  height: 10px;
+  background: #10b981;
+  border: 2px solid white;
   border-radius: 50%;
-  bottom: 0;
-  right: 0;
+  bottom: -2px;
+  right: -2px;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
 }
 
 .send-btn {
-  background: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   border: none;
-  color: #007bff;
+  color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0.5rem;
   border-radius: 50%;
   cursor: pointer;
-  transition: all 0.3s ease;
-  width: 30px;
-  height: 30px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 36px;
+  height: 36px;
   position: relative;
-  z-index: 20; /* Tăng z-index để luôn ở trên cùng */
-  margin-left: auto; /* Đẩy nút sang bên phải */
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
 }
 
-.send-icon {
-  font-size: 1.2rem;
+.send-btn:hover:not(:disabled) {
+  transform: scale(1.1) rotate(-5deg);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.send-btn:disabled {
+  background: #e5e7eb;
+  color: #9ca3af;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 .send-icon i,
 .attach-btn i {
-  font-size: 1.2rem;
-  color: #666;
+  font-size: 1.125rem;
 }
 
-.attach-btn:hover i,
-.send-btn:hover:not(:disabled) i {
-  color: #007bff;
+.attach-btn:not(.active-upload) i {
+  color: #667eea;
 }
 
-.send-btn.active-upload i {
-  color: #007bff;
-}
-
-.send-btn:hover:not(:disabled) {
-  transform: scale(1.1);
-  color: #0056b3;
-}
-
-// .send-btn:not(:disabled) {
-//   cursor: pointer;
-// }
-
-.send-btn:disabled {
-  color: #ccc;
-  cursor: not-allowed;
+.attach-btn.active-upload i {
+  color: white;
 }
 .comment-buttons {
   display: flex;
@@ -1101,29 +1332,34 @@ export default {
 }
 
 .view-more-btn {
-  background: none;
-  border: none;
-  color: #007bff;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  color: #667eea;
   font-weight: 600;
   cursor: pointer;
-  padding: 0.5rem 0;
-  font-size: 0.9rem;
-  margin: 0.5rem 0;
-  transition: color 0.2s ease;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.9375rem;
+  margin: 0.75rem 0;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 12px;
+  letter-spacing: -0.01em;
 }
 
 .view-more-btn:hover {
-  color: #0056b3;
-  text-decoration: underline;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-color: transparent;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
 }
 
 /* Highlight comment effect - chỉ highlight nội dung comment, không highlight cả dòng */
 .comment__content.highlight-content {
-  background-color: #e3f2fd !important;
-  border: 2px solid #1877f2 !important;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%) !important;
+  border: 2px solid #667eea !important;
   border-radius: 18px !important;
-  padding: 12px 16px !important;
-  box-shadow: 0 2px 8px rgba(24, 119, 242, 0.15) !important;
+  padding: 1rem 1.25rem !important;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2) !important;
   animation: highlight-fade 1.5s ease-in-out;
   position: relative;
 }
@@ -1135,7 +1371,7 @@ export default {
   left: -2px;
   right: -2px;
   bottom: -2px;
-  background: linear-gradient(45deg, #1877f2, #42a5f5);
+  background: linear-gradient(135deg, #667eea, #764ba2);
   border-radius: 20px;
   z-index: -1;
   animation: pulse-border 1.5s ease-in-out;
@@ -1143,17 +1379,17 @@ export default {
 
 @keyframes highlight-fade {
   0% {
-    background-color: #e3f2fd;
-    border-color: #1877f2;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+    border-color: #667eea;
     transform: scale(1.03);
   }
   40% {
-    background-color: #e3f2fd;
-    border-color: #1877f2;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.12) 0%, rgba(118, 75, 162, 0.12) 100%);
+    border-color: #667eea;
     transform: scale(1.03);
   }
   100% {
-    background-color: transparent;
+    background: transparent;
     border-color: transparent;
     transform: scale(1);
   }
@@ -1178,5 +1414,58 @@ export default {
   margin-left: -8px;
   transition: all 0.3s ease;
   border-radius: 4px;
+}
+
+/* Loading indicator for comments pagination */
+.loading-more-comments {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 1.5rem;
+  color: #667eea;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.loading-more-comments::before {
+  content: '';
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  margin-right: 0.75rem;
+  border: 3px solid rgba(102, 126, 234, 0.2);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Invisible trigger for infinite scroll */
+.load-more-trigger {
+  height: 1px;
+  width: 100%;
+  visibility: hidden;
+}
+
+/* Responsive styles */
+@media (max-width: 768px) {
+  .post-time {
+    font-size: 0.75rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .post-time {
+    font-size: 0.7rem;
+  }
+}
+
+@media (max-width: 360px) {
+  .post-time {
+    font-size: 0.7rem;
+  }
 }
 </style>

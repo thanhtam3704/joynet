@@ -1,11 +1,26 @@
 <template>
-  <img
-    v-if="profilePicture"
-    class="image-post__avatar"
-    :src="`http://localhost:3000/uploads/user/${profilePicture}`"
-    :key="`avatar-${id}-${profilePicture}`"
-  />
-  <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" :key="`default-${id}`" />
+  <router-link 
+    v-if="id && id.match(/^[0-9a-fA-F]{24}$/)" 
+    :to="{ name: 'Profile', params: { id: id } }" 
+    class="profile-image-link"
+  >
+    <img
+      v-if="profilePicture"
+      class="image-post__avatar"
+      :src="`http://localhost:3000/uploads/user/${profilePicture}`"
+      :key="`avatar-${id}-${profilePicture}`"
+    />
+    <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" :key="`default-${id}`" />
+  </router-link>
+  <div v-else class="profile-image-static">
+    <img
+      v-if="profilePicture"
+      class="image-post__avatar"
+      :src="`http://localhost:3000/uploads/user/${profilePicture}`"
+      :key="`avatar-${id}-${profilePicture}`"
+    />
+    <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" :key="`default-${id}`" />
+  </div>
 </template>
 
 <script>
@@ -116,10 +131,27 @@ export default {
 </script>
 
 <style scoped>
+.profile-image-link {
+  display: inline-block;
+  line-height: 0;
+  text-decoration: none;
+}
+
 .image-post__avatar {
   width: 40px;
   height: 40px;
   border-radius: 100%;
   object-fit: cover;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.profile-image-link:hover .image-post__avatar {
+  transform: scale(1.05);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.profile-image-static {
+  display: inline-block;
+  line-height: 0;
 }
 </style>

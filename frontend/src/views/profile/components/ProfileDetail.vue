@@ -30,7 +30,12 @@
         <div class="profile__detail">
           <div class="detail__user">
             <div class="detail__user-top">
-              <a class="user-top__name">{{ user.displayName }}</a>
+              <div class="user-name-wrapper">
+                <a class="user-top__name">{{ user.displayName }}</a>
+                <span v-if="user.isPrivate && !currentUser" class="private-badge" title="Tài khoản riêng tư">
+                  🔒
+                </span>
+              </div>
               <div class="user-top__birth">
                 <a v-if="user.birthDate">Ngày sinh:</a>
                 <span>{{ user.birthDate }}</span>
@@ -46,7 +51,30 @@
                 </div>
                 <div class="user-functions" v-if="!currentUser">
                   <div class="user-function-buttons">
-                    <div class="user-top__birth" v-if="!isFollowing">
+                    <!-- Nếu tài khoản riêng tư và chưa follow -->
+                    <div class="user-top__birth" v-if="user.isPrivate && !isFollowing && !hasPendingRequest">
+                      <div class="add-button-wrapper" v-if="!followLoading">
+                        <button class="btn btnFollow" id="btnFollow" @click="sendFollowRequest">
+                          Gửi yêu cầu
+                        </button>
+                      </div>
+                      <div class="add-button-loader" v-else>
+                        <SyncLoader class="follow-loader" :color="color" />
+                      </div>
+                    </div>
+                    <!-- Nếu đã gửi yêu cầu và đang chờ -->
+                    <div class="user-top__birth" v-else-if="hasPendingRequest">
+                      <div class="add-button-wrapper" v-if="!followLoading">
+                        <button class="btn btn-pending" @click="cancelFollowRequest">
+                          Đã gửi yêu cầu
+                        </button>
+                      </div>
+                      <div class="add-button-loader" v-else>
+                        <SyncLoader class="follow-loader" :color="color" />
+                      </div>
+                    </div>
+                    <!-- Nếu tài khoản công khai và chưa follow -->
+                    <div class="user-top__birth" v-else-if="!isFollowing">
                       <div class="add-button-wrapper" v-if="!followLoading">
                         <button class="btn btnFollow" id="btnFollow" @click="followUser">
                           Theo dõi
@@ -56,6 +84,7 @@
                         <SyncLoader class="follow-loader" :color="color" />
                       </div>
                     </div>
+                    <!-- Nếu đã follow -->
                     <div class="user-top__birth" v-else>
                       <div class="add-button-wrapper" v-if="!followLoading">
                         <button
@@ -89,24 +118,34 @@
           </div>
         </div>
       </div>
-      <div class="profile-desc">
-        <h5>Giới thiệu về tôi</h5>
-        <p class="detail__content">
-          {{ user.description }}
-        </p>
-        <h5 class="detail__hobbies">Sở thích của tôi</h5>
-        <p class="detail__content">
-          {{ user.hobbies }}
-        </p>
+      <div class="profile-desc" v-if="user.description || user.hobbies">
+        <div v-if="user.description">
+          <h5>Giới thiệu về tôi</h5>
+          <p class="detail__content">
+            {{ user.description }}
+          </p>
+        </div>
+        <div v-if="user.hobbies">
+          <h5 class="detail__hobbies">Sở thích của tôi</h5>
+          <p class="detail__content">
+            {{ user.hobbies }}
+          </p>
+        </div>
       </div>
       <div class="profile-posts">
         <h3>Bài đăng</h3>
-        <ProfileUserPosts :id="id" />
+        <ProfileUserPosts 
+          ref="profileUserPosts" 
+          :id="id" 
+          :is-private="user.isPrivate"
+          :is-following="isFollowing"
+          :is-current-user="currentUser"
+          @show-post-detail="$emit('show-post-detail', $event)" 
+        />
       </div>
       <ProfileEdit
         @updateUser="updateUser($event)"
         v-if="openEditProfile"
-        :id="id"
       />
       
       <!-- Modal Người theo dõi -->
@@ -154,15 +193,28 @@ export default {
       openEditProfile: false,
       showFollowersModal: false,
       showFollowingModal: false,
+      hasPendingRequest: false,
+      pendingRequestId: null,
     };
   },
   watch: {
     // Watch khi ID thay đổi (chuyển sang profile khác)
     id: {
       handler() {
+        // Đóng modal chỉnh sửa khi chuyển sang profile khác
+        this.openEditProfile = false;
         this.loadProfileData();
       },
       immediate: false, // Đã gọi trong created()
+    },
+    // Watch route để reload khi navigate đến cùng profile (ví dụ: từ notification)
+    '$route'(to, from) {
+      // Chỉ reload nếu đang ở profile page và params ID giống nhau
+      // (nghĩa là click vào notification của cùng user đang xem)
+      if (to.name === from.name && to.params.id === from.params.id && to.params.id === this.id) {
+        console.log('🔄 Reloading profile data due to route change (same profile)');
+        this.loadProfileData();
+      }
     },
   },
   async created() {
@@ -173,6 +225,8 @@ export default {
       this.isSkeletorLoading = true;
       // Reset currentUser status mỗi khi load profile mới
       this.currentUser = false;
+      this.hasPendingRequest = false;
+      this.pendingRequestId = null;
       
       try {
   // Đảm bảo loadUser hoàn thành trước
@@ -191,6 +245,19 @@ export default {
           this.isFollowing = currentUser
             ? userData.followers?.includes(currentUser)
             : false;
+          
+          console.log('📊 Profile Data Loaded:', {
+            profileUserId: this.id,
+            currentUserId: currentUser,
+            followers: userData.followers,
+            isFollowing: this.isFollowing,
+            followersCount: this.followers
+          });
+          
+          // Kiểm tra xem có yêu cầu pending không (nếu là tài khoản riêng tư)
+          if (userData.isPrivate && !this.currentUser && !this.isFollowing) {
+            await this.checkPendingRequest(currentUser);
+          }
         }
       } catch (error) {
   console.error("Load user error:", error);
@@ -200,7 +267,6 @@ export default {
     },
     async followUser() {
       this.followLoading = true;
-      this.followers++;
 
       try {
         const currentUser = this.$store.state.user._id;
@@ -210,8 +276,9 @@ export default {
         const responseFollow = await followUser(this.id, currentUser);
         
         if (responseFollow.status === 200) {
-          // Cập nhật UI
+          // Cập nhật UI ngay lập tức
           this.isFollowing = true;
+          this.followers++;
           
           // Cập nhật store thông qua action
           await this.$store.dispatch("updateUserFollowing", { 
@@ -219,31 +286,76 @@ export default {
             targetUserId: this.id 
           });
           
-          console.log(`Followed user ${this.id}, new followings:`, 
-                     this.$store.state.user?.followings);
+          console.log(`✅ Followed user ${this.id}, isFollowing now:`, this.isFollowing);
         }
       } catch (error) {
         console.error("Follow user error:", error);
-        this.followers--; // Hoàn tác nếu lỗi
+        // Hoàn tác UI nếu lỗi
+        this.isFollowing = false;
+        this.followers--;
       }
 
       this.followLoading = false;
     },
     
     async unFollowUser() {
+      console.log('🔴 Unfollow clicked, current followLoading:', this.followLoading);
+      
+      if (this.followLoading) {
+        console.log('⚠️ Already processing, skipping...');
+        return;
+      }
+      
       this.followLoading = true;
-      this.followers--;
 
       try {
         const currentUser = this.$store.state.user._id;
-        const { unfollowUser } = await import('@/api/users');
+        const { unfollowUser, getUser } = await import('@/api/users');
+        
+        console.log('📤 Sending unfollow request...');
         
         // Gửi yêu cầu bỏ theo dõi
         const responseUnFollow = await unfollowUser(this.id, currentUser);
         
+        console.log('📥 Unfollow response:', responseUnFollow.status);
+        
         if (responseUnFollow.status === 200) {
-          // Cập nhật UI
-          this.isFollowing = false;
+          // Đợi 500ms để backend hoàn tất việc xóa record
+          console.log('⏳ Waiting 500ms for backend...');
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Reload data từ server để đồng bộ
+          console.log('🔄 Reloading user data...');
+          const userResponse = await getUser(this.id);
+          
+          if (userResponse.status === 200) {
+            const userData = userResponse.data;
+            
+            // Cập nhật followers/followings count
+            this.followers = userData.followers?.length || 0;
+            this.following = userData.followings?.length || 0;
+            
+            // Kiểm tra đúng: xem currentUser có trong danh sách followers của target user không
+            // Hoặc xem target user có trong followings của current user không
+            const isCurrentUserInFollowers = userData.followers?.includes(currentUser) || false;
+            
+            console.log('🔍 Debug unfollow state:', {
+              currentUser: currentUser,
+              targetUser: this.id,
+              targetUserFollowers: userData.followers,
+              isCurrentUserInFollowers: isCurrentUserInFollowers
+            });
+            
+            // Nếu current user KHÔNG còn trong followers list của target user
+            // thì isFollowing = false
+            this.isFollowing = isCurrentUserInFollowers;
+            
+            console.log(`✅ Unfollowed user ${this.id}, verified from server:`, {
+              isFollowing: this.isFollowing,
+              followers: this.followers,
+              userFollowersList: userData.followers
+            });
+          }
           
           // Cập nhật store thông qua action
           await this.$store.dispatch("updateUserFollowing", { 
@@ -251,15 +363,122 @@ export default {
             targetUserId: this.id 
           });
           
-          console.log(`Unfollowed user ${this.id}, new followings:`, 
-                     this.$store.state.user?.followings);
+          // Nếu là tài khoản riêng tư, kiểm tra xem có pending request không
+          if (this.user.isPrivate) {
+            console.log('🔍 Checking pending request for private account...');
+            await this.checkPendingRequest(currentUser);
+          }
         }
       } catch (error) {
-        console.error("Unfollow user error:", error);
-        this.followers++; // Hoàn tác nếu lỗi
+        console.error("❌ Unfollow user error:", error);
+      } finally {
+        this.followLoading = false;
+        console.log('✅ Unfollow completed, followLoading set to false');
       }
-
+    },
+    
+    async sendFollowRequest() {
+      this.followLoading = true;
+      
+      try {
+        const currentUserId = this.$store.state.user._id;
+        const followRequestsAPI = (await import('@/api/followRequests')).default;
+        
+        console.log('🔄 Sending follow request:', {
+          from: currentUserId,
+          to: this.id,
+          isPrivate: this.user.isPrivate,
+          isFollowing: this.isFollowing
+        });
+        
+        const response = await followRequestsAPI.sendFollowRequest(currentUserId, this.id);
+        
+        if (response.status === 200) {
+          this.hasPendingRequest = true;
+          this.pendingRequestId = response.data.request._id;
+          
+          // Hiển thị toast thông báo
+          const { createToast } = await import('mosha-vue-toastify');
+          createToast('Đã gửi yêu cầu theo dõi', {
+            type: 'success',
+            position: 'top-right',
+            timeout: 3000
+          });
+        }
+      } catch (error) {
+        console.error("Send follow request error:", error);
+        console.error("Error response:", error.response?.data);
+        console.error("Error status:", error.response?.status);
+        
+        const { createToast } = await import('mosha-vue-toastify');
+        const errorMsg = error.response?.data || 'Không thể gửi yêu cầu';
+        createToast(errorMsg, {
+          type: 'danger',
+          position: 'top-right',
+          timeout: 3000
+        });
+      }
+      
       this.followLoading = false;
+    },
+    
+    async cancelFollowRequest() {
+      if (!this.pendingRequestId) return;
+      
+      this.followLoading = true;
+      
+      try {
+        const currentUserId = this.$store.state.user._id;
+        const followRequestsAPI = (await import('@/api/followRequests')).default;
+        
+        const response = await followRequestsAPI.cancelFollowRequest(this.pendingRequestId, currentUserId);
+        
+        if (response.status === 200) {
+          this.hasPendingRequest = false;
+          this.pendingRequestId = null;
+          
+          const { createToast } = await import('mosha-vue-toastify');
+          createToast('Đã hủy yêu cầu theo dõi', {
+            type: 'info',
+            position: 'top-right',
+            timeout: 3000
+          });
+        }
+      } catch (error) {
+        console.error("Cancel follow request error:", error);
+        
+        const { createToast } = await import('mosha-vue-toastify');
+        createToast('Không thể hủy yêu cầu', {
+          type: 'danger',
+          position: 'top-right',
+          timeout: 3000
+        });
+      }
+      
+      this.followLoading = false;
+    },
+    
+    async checkPendingRequest(currentUserId) {
+      try {
+        const followRequestsAPI = (await import('@/api/followRequests')).default;
+        
+        const response = await followRequestsAPI.checkFollowRequest(currentUserId, this.id);
+        
+        if (response.status === 200 && response.data.exists) {
+          this.hasPendingRequest = true;
+          this.pendingRequestId = response.data.request._id;
+          console.log('✅ Found pending request:', response.data.request._id);
+        } else {
+          this.hasPendingRequest = false;
+          this.pendingRequestId = null;
+          console.log('✅ No pending request found');
+        }
+      } catch (error) {
+        console.error("Check pending request error:", error);
+        // Nếu lỗi, set về false để an toàn
+        this.hasPendingRequest = false;
+        this.pendingRequestId = null;
+      }
     },
     
     async startConversation() {
@@ -349,6 +568,10 @@ export default {
         }, 500);
       }
     },
+    updatePostCommentsCount(postId, newCount) {
+      // Forward to ProfileUserPosts child component
+      this.$refs.profileUserPosts?.updatePostCommentsCount(postId, newCount);
+    },
   },
 };
 </script>
@@ -358,176 +581,276 @@ export default {
   width: 100%;
   height: 100%;
   box-sizing: border-box;
-  overflow-x: hidden; /* Ngăn thanh cuộn ngang */
+  overflow-x: hidden;
 }
 
 .profile-info {
   display: flex;
+  flex-direction: column;
   align-items: center;
   position: relative;
   width: 100%;
   box-sizing: border-box;
-  overflow: hidden; /* Ngăn tràn */
+  overflow: hidden;
+  padding: 2rem 0 1rem 0;
+  background: var(--white);
+  border-radius: var(--radius-2xl);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--gray-100);
+  margin-bottom: 1.5rem;
 }
 
 .profile__detail {
-  position: absolute;
-  display: flex;
-  justify-content: flex-start;
-  background-color: white;
-  border-radius: 0.3rem;
-  margin-bottom: 2rem;
-  padding: 1rem;
-  width: calc(100% - 180px); /* Thay đổi từ kích thước cố định sang tương đối */
-  max-width: 800px; /* Giới hạn kích thước tối đa */
-  height: 110px;
-  left: 7.8rem;
-  top: 1.2rem;
+  width: 100%;
+  padding: 1.5rem 2rem;
+  box-sizing: border-box;
+  text-align: center;
 }
 
 .profile-avatar {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 150px;
-  height: 150px;
-  border-radius: 100%;
-  background-color: white;
-  z-index: 1;
+  width: 140px;
+  height: 140px;
+  border-radius: var(--radius-full);
+  background: var(--white);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.12);
+  border: 4px solid var(--white);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 1rem;
+}
+
+.profile-avatar::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: var(--radius-full);
+  padding: 2px;
+  background: var(--gradient-primary);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.profile-avatar:hover::after {
+  opacity: 1;
 }
 
 .profile img {
-  width: 108px;
-  height: 108px;
-  border-radius: 100%;
-  background-color: white;
+  width: 120px;
+  height: 120px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+  background: var(--gray-50);
+}
+
+.detail__user {
+  width: 100%;
+}
+
+.detail__user-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
 }
 
 .detail__user a {
-  font-weight: bold;
-  padding-left: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  padding: 0;
 }
 
 .user-top__name {
-  font-size: 1.2rem;
+  font-size: 1.75rem;
+  font-family: var(--font-display);
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 0.25rem;
 }
 
 .user-top__birth {
-  margin-top: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9375rem;
+  justify-content: center;
+}
+
+.user-top__birth a {
+  padding: 0;
+  font-weight: 600;
+  color: var(--gray-700);
 }
 
 .user-top__birth span {
-  margin-left: 0.5rem;
+  color: var(--gray-600);
+  font-weight: 500;
 }
 
 .follower-count, .following-count {
   cursor: pointer;
-  transition: opacity 0.2s;
+  transition: all 0.2s ease;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-lg);
+  background: var(--gray-50);
 }
 
 .follower-count:hover, .following-count:hover {
-  opacity: 0.8;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  transform: translateY(-2px);
 }
 
 .user-follow {
   display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1rem;
+  width: 100%;
+}
+
+.user-functions,
+.user-edit-profile {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.user-function-buttons {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  justify-content: center;
 }
 
 .detail__content {
-  font-size: 0.75rem;
-  margin-top: 0.5em;
+  font-size: 0.9375rem;
+  margin-top: 0.75rem;
+  line-height: 1.6;
+  color: var(--gray-700);
 }
 
 .profile-desc {
   display: flex;
   justify-content: flex-start;
   flex-direction: column;
-  background-color: white;
-  border-radius: 0.3rem;
-  margin-top: 1rem;
-  padding: 1rem;
+  background: var(--white);
+  border-radius: var(--radius-2xl);
+  padding: 2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 1px solid var(--gray-100);
+  margin-bottom: 1.5rem;
+}
+
+.profile-desc h5 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  font-family: var(--font-display);
+  margin-bottom: 0.5rem;
 }
 
 .detail__hobbies {
-  margin-top: 1rem;
-}
-
-.profile-posts {
   margin-top: 2rem;
 }
 
+.profile-posts {
+  margin-top: 0;
+}
+
 .profile-posts h3 {
-  margin-bottom: 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--gray-900);
+  font-family: var(--font-display);
+  padding: 1.5rem 0 0 0;
 }
 
 .btn {
-  transform: translate(0, 4px);
-  transition: 0.4s;
-  background-color: var(--green);
-  margin-left: 2rem;
+  height: 44px;
+  border-radius: var(--radius-lg);
+  border: none;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: var(--font-primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.5rem;
+  margin: 0;
 }
 
-.btn:hover {
-  background-color: #6dc271;
-  transition: 0.4s;
-  box-shadow: 0px 15px 15px -5px rgba(0, 0, 0, 0.2);
-  transform: translate(0, -3px);
-}
-
+.btnFollow,
 .edit-profile {
-  width: 150px;
-  margin-bottom: 3rem;
+  background: var(--gradient-primary);
+  color: var(--white);
+  box-shadow: 0 4px 6px -1px rgba(102, 126, 234, 0.3);
+  min-width: 120px;
 }
-.btnFollow {
-  width: 100px;
+
+.btnFollow:hover,
+.edit-profile:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -5px rgba(102, 126, 234, 0.4);
 }
 
 .btn-unfollow {
-  width: 120px;
-  transform: translate(0, 3px);
-  transition: 0.4s;
-  background-color: var(--red);
-  margin-left: 2rem;
+  min-width: 120px;
+  background: var(--white);
+  color: var(--error);
+  border: 2px solid var(--error);
 }
 
 .btn-unfollow:hover {
-  width: 120px;
-  background-color: #e64e49;
-  transition: 0.4s;
-  box-shadow: 0px 15px 15px -5px rgba(0, 0, 0, 0.2);
-  transform: translate(0, -3px);
-}
-
-.user-function-buttons {
-  display: flex;
-  align-items: center;
+  background: var(--error);
+  color: var(--white);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(239, 68, 68, 0.3);
 }
 
 .btn-message {
-  width: 100px;
-  transform: translate(0, 4px);
-  transition: 0.4s;
-  background-color: #0095f6;
-  margin-left: 1rem;
-  color: white;
+  min-width: 120px;
+  background: var(--white);
+  color: var(--primary);
+  border: 2px solid var(--primary);
 }
 
 .btn-message:hover {
-  width: 100px;
-  background-color: #1877f2;
-  transition: 0.4s;
-  box-shadow: 0px 15px 15px -5px rgba(0, 0, 0, 0.2);
-  transform: translate(0, -3px);
+  background: var(--primary);
+  color: var(--white);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(102, 126, 234, 0.3);
 }
 
 .follow-loader {
-  margin-left: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 120px;
+  height: 44px;
 }
 
-/* Tùy chỉnh thanh cuộn */
+.skeletor {
+  margin-bottom: 1rem;
+}
+
+/* Custom scrollbar */
 .profile::-webkit-scrollbar {
   width: 6px;
-  height: 0; /* Ẩn thanh cuộn ngang */
+  height: 0;
 }
 
 .profile::-webkit-scrollbar-track {
@@ -535,37 +858,120 @@ export default {
 }
 
 .profile::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  background: var(--gray-300);
+  border-radius: var(--radius-full);
 }
 
 .profile::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.3);
+  background: var(--gray-400);
 }
 
-/* Media queries cho màn hình nhỏ */
+/* Responsive */
 @media (max-width: 768px) {
   .profile-info {
-    flex-direction: column;
+    padding: 1.5rem 1rem;
+    border-radius: var(--radius-xl);
+  }
+
+  .profile-avatar {
+    width: 120px;
+    height: 120px;
+  }
+
+  .profile img {
+    width: 100px;
+    height: 100px;
   }
 
   .profile__detail {
-    position: relative;
-    left: 0;
-    top: 0;
-    width: 100%;
-    max-width: 100%;
-    margin-top: 1rem;
-    height: auto;
+    padding: 1rem;
+  }
+
+  .user-top__name {
+    font-size: 1.5rem;
   }
 
   .user-follow {
     flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .follower-count,
+  .following-count {
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .user-function-buttons {
+    flex-direction: column;
+    width: 100%;
+    align-items: center;
   }
 
   .btn {
-    margin-left: 0;
-    margin-top: 0.5rem;
+    width: 100%;
+    max-width: 300px;
+  }
+
+  .profile-desc {
+    padding: 1.5rem 1rem;
+    border-radius: var(--radius-xl);
+  }
+
+  .profile-desc h5 {
+    font-size: 1.125rem;
+  }
+
+  .detail__content {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .profile-info {
+    padding: 1.25rem 0.875rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .profile-avatar {
+    width: 100px;
+    height: 100px;
+  }
+
+  .profile img {
+    width: 85px;
+    height: 85px;
+  }
+
+  .user-top__name {
+    font-size: 1.25rem;
+  }
+
+  .user-top__birth {
+    font-size: 0.875rem;
+  }
+
+  .btn {
+    height: 40px;
+    font-size: 0.875rem;
+  }
+
+  .profile-desc {
+    padding: 1.25rem 0.875rem;
+    border-radius: var(--radius-lg);
+  }
+
+  .profile-desc h5 {
+    font-size: 1rem;
+  }
+
+  .profile-posts h3 {
+    font-size: 1.25rem;
+    padding: 1rem 0 0 0;
+  }
+
+  .detail__content {
+    font-size: 0.8125rem;
   }
 }
 </style>

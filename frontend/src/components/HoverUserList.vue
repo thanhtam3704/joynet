@@ -12,7 +12,9 @@
         <div v-if="loading" class="hover-loading">Đang tải...</div>
         <ul v-else class="hover-ul">
           <li v-for="u in items" :key="u._id" class="hover-li">
-            <span class="hover-name">{{ u.displayName || u.email || 'Người dùng' }}</span>
+            <router-link :to="{ name: 'Profile', params: { id: u._id } }" class="hover-name-link" @click="open = false">
+              <span class="hover-name">{{ u.displayName || u.email || 'Người dùng' }}</span>
+            </router-link>
           </li>
           <li v-if="hasMore" class="hover-more">và {{ remaining }} người khác</li>
           <li v-if="!items.length && !loading" class="hover-empty">Chưa có dữ liệu</li>
@@ -112,6 +114,16 @@ export default {
 .hover-ul { list-style: none; padding: 0; margin: 0; max-width: 260px; }
 .hover-li { display: flex; align-items: center; padding: 4px 0; }
 .hover-name { font-size: 13px; color: #111; }
+.hover-name-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+  width: 100%;
+}
+.hover-name-link:hover .hover-name {
+  text-decoration: underline;
+  color: var(--primary, #667eea);
+}
 .hover-loading, .hover-empty, .hover-more { font-size: 12px; color: #666; }
 </style>
 

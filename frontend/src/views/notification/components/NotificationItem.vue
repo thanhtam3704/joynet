@@ -18,7 +18,12 @@
       
       <!-- Icon cho loại thông báo -->
       <div class="notification-type-icon" :class="notification.type">
-        <i class="material-icons">
+        <!-- Hiển thị emoji nếu là reaction -->
+        <span v-if="notification.type === 'like' && notification.reactionType" class="reaction-emoji">
+          {{ getReactionEmoji(notification.reactionType) }}
+        </span>
+        <!-- Icon mặc định cho các loại khác -->
+        <i v-else class="material-icons">
           {{ getTypeIcon(notification.type) }}
         </i>
       </div>
@@ -59,11 +64,26 @@ export default {
     }
   },
   methods: {
+    getReactionEmoji(reactionType) {
+      const emojis = {
+        like: '👍',
+        love: '❤️',
+        haha: '😆',
+        wow: '😮',
+        sad: '😢',
+        angry: '😠'
+      };
+      return emojis[reactionType] || '👍';
+    },
+    
     getTypeIcon(type) {
       const icons = {
         like: 'favorite',
         comment: 'chat_bubble',
         follow: 'person_add',
+        follow_request: 'person_add_alt',
+        follow_request_accepted: 'check_circle',
+        follow_request_rejected: 'cancel',
         message: 'mail',
         post: 'photo',
         system: 'notifications'
@@ -73,9 +93,12 @@ export default {
     
     getActionText(type) {
       const actions = {
-        like: 'đã thích',
+        like: 'đã bày tỏ cảm xúc về',
         comment: 'đã bình luận về',
         follow: 'đã bắt đầu theo dõi bạn',
+        follow_request: 'đã gửi yêu cầu theo dõi bạn',
+        follow_request_accepted: 'đã chấp nhận yêu cầu theo dõi của bạn',
+        follow_request_rejected: 'đã từ chối yêu cầu theo dõi của bạn',
         message: 'đã gửi tin nhắn cho bạn',
         post: 'đã đăng bài viết mới',
         system: 'thông báo hệ thống'
@@ -138,9 +161,15 @@ export default {
           }
           break;
         case 'follow':
+        case 'follow_request_accepted':
+        case 'follow_request_rejected':
           if (this.notification.fromUser) {
             this.$router.push(`/profile/${this.notification.fromUser._id}`);
           }
+          break;
+        case 'follow_request':
+          // Emit event để mở modal yêu cầu theo dõi
+          this.$emit('open-follow-requests-modal');
           break;
         case 'message':
           this.$router.push('/messages');
@@ -207,6 +236,11 @@ export default {
     justify-content: center;
     border: 2px solid #fff;
     
+    .reaction-emoji {
+      font-size: 14px;
+      line-height: 1;
+    }
+    
     i {
       font-size: 12px;
       color: white;
@@ -222,6 +256,18 @@ export default {
     
     &.follow {
       background: #2ed573;
+    }
+    
+    &.follow_request {
+      background: #ffa502;
+    }
+    
+    &.follow_request_accepted {
+      background: #26de81;
+    }
+    
+    &.follow_request_rejected {
+      background: #ff4757;
     }
     
     &.message {

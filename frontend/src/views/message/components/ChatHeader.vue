@@ -18,7 +18,7 @@
         <div class="chat-header-status">{{ getActivityStatus() }}</div>
       </div>
     </div>
-    <div class="chat-header-actions">
+    <!-- <div class="chat-header-actions">
       <button class="chat-header-button">
         <i class="material-icons">phone</i>
       </button>
@@ -28,7 +28,7 @@
       <button class="chat-header-button">
         <i class="material-icons">info</i>
       </button>
-    </div>
+    </div> -->
   </div>
 </template>
 
@@ -112,13 +112,15 @@ export default {
 
 <style lang="scss" scoped>
 .chat-header {
-  height: 60px;
-  border-bottom: 1px solid #f8e0e6;
+  height: 68px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
-  background-color: #fef1f6;
+  padding: 0 1.5rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
 }
 
 .chat-header-user {
@@ -127,16 +129,24 @@ export default {
 }
 
 .chat-header-avatar {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
-  margin-right: 12px;
+  margin-right: 14px;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+  transition: all 0.2s ease;
+  flex-shrink: 0;
   
   img {
     width: 100%;
     height: 100%;
     border-radius: 50%;
     object-fit: cover;
+  }
+  
+  &:hover {
+    border-color: rgba(102, 126, 234, 0.4);
+    transform: scale(1.05);
   }
 }
 
@@ -146,35 +156,94 @@ export default {
 }
 
 .chat-header-name {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 2px;
 }
 
 .chat-header-status {
-  font-size: 12px;
-  color: #ec407a;
+  font-size: 0.8125rem;
+  color: #667eea;
+  font-weight: 500;
 }
 
 .chat-header-actions {
   display: flex;
-  gap: 16px;
+  gap: 0.5rem;
 }
 
 .chat-header-button {
-  background: none;
+  background: #f1f5f9;
   border: none;
   cursor: pointer;
-  color: #e91e63;
+  color: #667eea;
   font-size: 24px;
-  padding: 4px;
+  padding: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   
   &:hover {
-    color: #f06292;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+  }
+  
+  i {
+    font-size: 20px;
   }
 }
 
+/* Responsive */
+@media (max-width: 768px) {
+  .chat-header {
+    height: 60px;
+    padding: 0 1rem;
+  }
+  
+  .chat-header-avatar {
+    width: 38px;
+    height: 38px;
+    margin-right: 12px;
+  }
+  
+  .chat-header-name {
+    font-size: 0.9375rem;
+  }
+  
+  .chat-header-status {
+    font-size: 0.75rem;
+  }
+}
 
+@media (max-width: 480px) {
+  .chat-header {
+    padding: 0 0.75rem;
+  }
+  
+  .chat-header-avatar {
+    width: 34px;
+    height: 34px;
+    margin-right: 10px;
+  }
+  
+  .chat-header-name {
+    font-size: 0.875rem;
+  }
+  
+  .chat-header-button {
+    width: 36px;
+    height: 36px;
+    
+    i {
+      font-size: 18px;
+    }
+  }
+}
 </style>

@@ -19,7 +19,7 @@
         <span class="input__label">E-mail</span>
       </label>
 
-      <label class="input" style="position: relative">
+      <label class="input password-input">
         <input
           class="input__field"
           :type="showPassword ? 'text' : 'password'"
@@ -139,26 +139,38 @@ export default {
     },
 
     
-    handleGoogleCallback() {
-      const urlParams = new URLSearchParams(window.location.search);
+    async handleGoogleCallback() {
+      // Lấy query params từ hash route (sau dấu #)
+      const hash = window.location.hash;
+      const queryString = hash.includes('?') ? hash.split('?')[1] : '';
+      const urlParams = new URLSearchParams(queryString);
+      
       const token = urlParams.get('token');
       const success = urlParams.get('success');
       const error = urlParams.get('error');
       
       if (token && success === 'google_login') {
-        // Lưu token và chuyển hướng
+        // Lưu token
         localStorage.setItem("token", token);
         
-        // Clear URL params
-        window.history.replaceState({}, document.title, window.location.pathname);
-        
-        // Redirect to home
-        this.$router.push("/home");
-      } else if (error === 'google_auth_failed') {
+        // Load user info
+        try {
+          await this.$store.dispatch('loadUser');
+          
+          // Clear URL params
+          window.history.replaceState({}, document.title, '/#/login');
+          
+          // Redirect to home
+          this.$router.replace("/home");
+        } catch (err) {
+          console.error('Failed to load user:', err);
+          this.error = 'Không thể tải thông tin người dùng. Vui lòng thử lại.';
+          localStorage.removeItem('token');
+          window.history.replaceState({}, document.title, '/#/login');
+        }
+      } else if (error) {
         this.error = 'Đăng nhập Google thất bại. Vui lòng thử lại.';
-        
-        // Clear URL params
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState({}, document.title, '/#/login');
       }
     },
     
@@ -216,206 +228,360 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.card {
-  background: var(--white);
-  padding: calc(4 * var(--size-bezel));
-  border-radius: var(--size-radius);
-  border: 3px solid var(--color-shadow, currentColor);
-  box-shadow: 0.5rem 0.5rem 0 var(--color-shadow, currentColor);
-  margin-top: 5rem;
+.login {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  overflow: hidden;
+}
 
-  &--inverted {
-    --color-background: var(--color-dark);
-    color: var(--color-light);
-    --color-shadow: var(--color-accent);
+.login::before {
+  content: '';
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(255,255,255,0.1) 1px, transparent 1px);
+  background-size: 50px 50px;
+  animation: moveBackground 20s linear infinite;
+  opacity: 0.3;
+}
+
+@keyframes moveBackground {
+  0% {
+    transform: translate(0, 0);
   }
-
-  &--accent {
-    --color-background: var(--color-signal);
-    --color-accent: var(--color-light);
-    color: var(--color-dark);
-  }
-
-  &__logo {
-    width: 60px;
-    height: 60px;
-    margin-bottom: 1rem;
-  }
-
-  *:first-child {
-    margin-top: 0;
-  }
-
-  &__text {
-    margin-bottom: 1rem;
+  100% {
+    transform: translate(50px, 50px);
   }
 }
 
-.login {
-  max-width: 40rem;
-  padding: 1rem;
-  margin-left: auto;
-  margin-right: auto;
+.card {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  padding: 2.5rem;
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1);
+  max-width: 440px;
+  width: 100%;
+  position: relative;
+  z-index: 1;
+  animation: slideUp 0.5s ease-out;
+
+  &__logo {
+    width: 64px;
+    height: 64px;
+    margin-bottom: 0;
+    filter: drop-shadow(0 4px 8px rgba(102, 126, 234, 0.2));
+    transition: transform 0.3s ease;
+    flex-shrink: 0;
+  }
+
+  &__logo:hover {
+    transform: scale(1.05) rotate(5deg);
+  }
+
+  &__text {
+    margin-bottom: 1.5rem;
+    margin-top: 0.5rem;
+    color: var(--gray-700);
+    font-size: 0.9375rem;
+    font-weight: 500;
+  }
+}
+
+.logo-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.joynet-logo-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 2rem;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 50%, #f093fb 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  display: inline-block;
+  line-height: 1;
+  margin: 0;
 }
 
 .input {
   position: relative;
+  margin-bottom: 2rem;
 
-  &__label {
-    position: absolute;
-    left: 0;
-    top: 0;
-    padding: calc(var(--size-bezel) * 0.75) calc(var(--size-bezel) * 0.5);
-    margin: calc(var(--size-bezel) * 0.75 + 3px) calc(var(--size-bezel) * 0.5);
-    white-space: nowrap;
-    transform: translate(0, 0);
-    transform-origin: 0 0;
-    transition: transform 120ms ease-in;
-    color: gray;
-    line-height: 1.2;
-  }
   &__field {
     box-sizing: border-box;
     display: block;
     width: 100%;
-    border: 3px solid currentColor;
-    padding: calc(var(--size-bezel) * 1.5) var(--size-bezel);
-    color: currentColor;
-    background: transparent;
-    border-radius: var(--size-radius);
-    margin-bottom: 1rem;
+    border: 2px solid var(--gray-200);
+    padding: 0.875rem 1rem;
+    color: var(--gray-900);
+    background: var(--white);
+    border-radius: var(--radius-lg);
+    font-size: 0.9375rem;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
-    &:focus,
-    &:not(:placeholder-shown) {
+    &:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+      
       & + .input__label {
-        transform: translate(0.25rem, -65%) scale(0.8);
-        color: #ff80ab; /* Updated to match our pastel theme */
-        background: var(--white);
-        padding: 0 0.3em;
-        z-index: 2;
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--primary);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
       }
     }
+
+    &:not(:placeholder-shown) {
+      & + .input__label {
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--gray-600);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
+      }
+    }
+  }
+
+  &__label {
+    position: absolute;
+    left: 1rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--gray-500);
+    pointer-events: none;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    z-index: 1;
+  }
+}
+
+.input-error {
+  border-color: var(--error) !important;
+  box-shadow: 0 0 0 4px rgba(239, 68, 68, 0.1) !important;
+}
+
+.password-input {
+  position: relative;
+  
+  .input__field {
+    padding-right: 3rem;
   }
 }
 
 .toggle-password-btn {
   position: absolute;
-  right: 0.75rem;
+  right: 0.625rem;
   top: 50%;
   transform: translateY(-50%);
-  background: none;
+  background: transparent;
   border: none;
   cursor: pointer;
-  font-size: 1.2rem;
-  padding: 0 0.25em;
-  color: var(--txt-darkest);
+  font-size: 1.125rem;
+  padding: 0.375rem;
+  border-radius: var(--radius-md);
+  transition: all 0.2s ease;
   z-index: 3;
-}
-.button-group {
-  margin-top: calc(var(--size-bezel) * 2.5);
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
 }
 
-button {
-  color: currentColor;
-  padding: var(--size-bezel) calc(var(--size-bezel) * 2);
-  background: var(--light);
-  border: none;
-  border-radius: var(--size-radius);
-  font-weight: 900;
-  font-family: "Roboto", "Arial", "Helvetica Neue", "Segoe UI", "Tahoma",
-    "Geneva", "Verdana", "sans-serif";
+.toggle-password-btn:hover {
+  background: rgba(99, 102, 241, 0.08);
+  transform: translateY(-50%) scale(1.05);
 }
 
-button + button {
-  margin-left: calc(var(--size-bezel) * 2);
-}
-
-.icon {
-  display: inline-block;
-  width: 1em;
-  height: 1em;
-  margin-right: 0.5em;
-}
-
-.hidden {
-  display: none;
+.toggle-password-btn:active {
+  transform: translateY(-50%) scale(0.95);
 }
 
 .warn {
-  color: #ff8a80; /* Lighter red to match our pastel theme */
-  margin-top: 1rem;
+  color: var(--error);
+  margin: -0.5rem 0 1rem 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.warn::before {
+  content: '⚠️';
+  font-size: 1rem;
+}
+
+.button-group {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .button-group-left {
   display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
 }
 
 .login-button-loader {
-  margin-right: 2em;
-}
-// Logo và chữ Joynet trên một dòng, căn giữa đẹp
-.logo-row {
+  flex: 2;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 0.75rem;
+  min-width: 180px;
 }
-.joynet-logo-text {
-  font-family: "Montserrat", "Segoe UI", "Arial", "Helvetica Neue", sans-serif;
-  font-weight: 900;
-  font-size: 2rem;
-  background: linear-gradient(90deg, #fe7b77 0%, #fea94f 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  text-shadow: 2px 2px 8px rgba(254, 123, 119, 0.1),
-    0 2px 8px rgba(254, 169, 79, 0.1);
-  display: inline-block;
+
+button {
+  padding: 0.875rem 1.5rem;
+  background: var(--gradient-primary);
+  border: none;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: var(--white);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 6px -1px rgba(102, 126, 234, 0.3);
+  width: 100%;
+  white-space: nowrap;
 }
-// Hiệu ứng border đỏ khi input lỗi
-.input-error {
-  border-color: #ff8a80 !important; /* Lighter red to match our pastel theme */
-  box-shadow: 0 0 0 2px rgba(255, 138, 128, 0.15);
+
+button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -5px rgba(102, 126, 234, 0.4);
 }
-/* Google Login Styles */
+
+button:active {
+  transform: translateY(0);
+  box-shadow: 0 4px 6px -1px rgba(102, 126, 234, 0.3);
+}
+
+button[type="reset"] {
+  background: transparent;
+  color: var(--primary);
+  box-shadow: none;
+  padding: 0.875rem 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  flex: 1;
+}
+
+button[type="reset"]:hover {
+  background: var(--gray-100);
+  transform: none;
+  box-shadow: none;
+}
+
+.button-group-right button {
+  background: var(--white);
+  color: var(--primary);
+  border: 2px solid var(--primary);
+  box-shadow: none;
+}
+
+.button-group-right button:hover {
+  background: var(--primary);
+  color: var(--white);
+}
+
+/* Divider */
 .divider-row {
   display: flex;
   align-items: center;
-  margin: 1.5rem 0 1rem 0;
+  margin: 1.75rem 0 1.25rem 0;
 }
+
 .divider-line {
   flex: 1;
   height: 1px;
-  background: #e0e0e0;
+  background: var(--gray-200);
 }
+
 .divider-text {
   margin: 0 1rem;
-  color: #888;
-  font-size: 0.95rem;
+  color: var(--gray-500);
+  font-size: 0.875rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
+
+/* Google Button */
 .google-login-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.5rem;
+  gap: 0.75rem;
   width: 100%;
-  padding: 0.7rem 0;
-  background: #fff;
-  border: 1px solid #d1d1d1;
-  border-radius: 4px;
-  font-size: 1rem;
-  font-weight: 500;
-  color: #444;
+  padding: 0.75rem 1.5rem;
+  background: var(--white);
+  border: 2px solid var(--gray-200);
+  border-radius: var(--radius-lg);
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--gray-700);
   cursor: pointer;
-  transition: box-shadow 0.2s;
-  margin-bottom: 1.2rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  margin-bottom: 0;
 }
+
 .google-login-btn:hover {
-  box-shadow: 0 2px 8px rgba(66, 133, 244, 0.15);
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+  transform: translateY(-1px);
 }
+
 .google-logo {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .login {
+    padding: 1rem 0.5rem;
+  }
+
+  .card {
+    padding: 2rem 1.5rem;
+  }
+
+  .joynet-logo-text {
+    font-size: 1.875rem;
+  }
+
+  .card__logo {
+    width: 60px;
+    height: 60px;
+  }
+
+  .button-group-left {
+    flex-direction: column;
+  }
+
+  button + button {
+    margin-left: 0;
+  }
 }
 </style>

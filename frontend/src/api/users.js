@@ -6,6 +6,13 @@ export const getUser = (id) =>
 export const getAllUsers = () =>
   axios.get('/users/', { withCredentials: true });
 
+export const getSuggestedContacts = (limit = 5, offset = 0) =>
+  axios.get('/users/suggested/contacts', { 
+    withCredentials: true,
+    headers: { token: localStorage.getItem('token') },
+    params: { limit, offset }
+  });
+
 export const searchUsers = (query) =>
   axios.get('/users/', { 
     withCredentials: true,

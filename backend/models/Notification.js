@@ -13,7 +13,7 @@ const NotificationSchema = new mongoose.Schema({
   },
   type: {
     type: String,
-    enum: ['like', 'comment', 'follow', 'message', 'post', 'system'],
+    enum: ['like', 'comment', 'follow', 'follow_request', 'follow_request_accepted', 'message', 'post', 'system'],
     required: true
   },
   postId: {
@@ -29,6 +29,11 @@ const NotificationSchema = new mongoose.Schema({
   message: {
     type: String,
     default: ''
+  },
+  reactionType: {
+    type: String,
+    enum: ['like', 'love', 'haha', 'wow', 'sad', 'angry', null],
+    default: null
   },
   isRead: {
     type: Boolean,

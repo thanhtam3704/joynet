@@ -22,11 +22,34 @@ export const toggleLike = (postId, userId) =>
     { withCredentials: true }
   );
 
-export const getTimeline = (userId) =>
-  axios.get(`/posts/timeline/${userId}`, { withCredentials: true });
+// React to post with emoji
+export const reactToPost = (postId, userId, reactionType) =>
+  axios.put(
+    `/posts/${postId}/react`,
+    { userId, reactionType },
+    { withCredentials: true }
+  );
 
-export const getUserPosts = (userId) =>
-  axios.get(`/posts/${userId}/posts`, { withCredentials: true });
+export const getReactionStatus = (postId, userId) =>
+  axios.get(`/posts/${postId}/reaction-status/${userId}`, { withCredentials: true });
+
+// Get list of users who reacted to a post
+export const getReactors = (postId, reactionType = null) => {
+  const url = reactionType 
+    ? `/posts/${postId}/reactors/${reactionType}`
+    : `/posts/${postId}/reactors`;
+  return axios.get(url, { withCredentials: true });
+};
+
+// Get list of users who commented on a post
+export const getCommenters = (postId) =>
+  axios.get(`/posts/${postId}/commenters`, { withCredentials: true });
+
+export const getTimeline = (userId, page = 1, limit = 6) =>
+  axios.get(`/posts/timeline/${userId}?page=${page}&limit=${limit}`, { withCredentials: true });
+
+export const getUserPosts = (userId, page = 1, limit = 6) =>
+  axios.get(`/posts/${userId}/posts?page=${page}&limit=${limit}`, { withCredentials: true });
 
 export const createPost = (post) =>
   axios.post('/posts/', post, { withCredentials: true });

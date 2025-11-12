@@ -122,37 +122,56 @@ router.delete('/:id', verifyToken, async (req, res) => {
 });
 
 // POST - Tạo thông báo mới (internal function, có thể được gọi từ các routes khác)
-const createNotification = async (fromUserId, toUserId, type, postId = null, commentId = null, message = '') => {
+const createNotification = async (fromUserId, toUserId, type, postId = null, commentId = null, message = '', reactionType = null) => {
   try {
     // Không tự thông báo cho chính mình
     if (fromUserId.toString() === toUserId.toString()) {
       return null;
     }
 
-    // Kiểm tra xem thông báo tương tự đã tồn tại chưa (để tránh spam)
-    const existingNotification = await Notification.findOne({
-      fromUser: fromUserId,
-      toUser: toUserId,
-      type,
-      postId,
-      createdAt: { $gte: new Date(Date.now() - 24 * 60 * 60 * 1000) } // Trong 24h qua
-    });
+    // Đối với like và follow: Kiểm tra xem thông báo đã tồn tại chưa (không giới hạn thời gian)
+    // Nếu đã có thì chỉ cập nhật thời gian, reactionType và đánh dấu chưa đọc
+    if (type === 'like' || type === 'follow') {
+      const existingNotification = await Notification.findOne({
+        fromUser: fromUserId,
+        toUser: toUserId,
+        type,
+        postId: type === 'like' ? postId : null // Chỉ check postId cho like
+      });
 
-    if (existingNotification) {
-      // Cập nhật thời gian thay vì tạo mới
-      existingNotification.createdAt = new Date();
-      existingNotification.isRead = false;
-      await existingNotification.save();
-      return existingNotification;
+      if (existingNotification) {
+        // Cập nhật thời gian, reactionType và đánh dấu chưa đọc thay vì tạo mới
+        existingNotification.createdAt = new Date();
+        existingNotification.isRead = false;
+        
+        // Cập nhật reactionType nếu là notification like
+        if (type === 'like' && reactionType) {
+          existingNotification.reactionType = reactionType;
+        }
+        
+        await existingNotification.save();
+        
+        // Populate để trả về đầy đủ thông tin
+        await existingNotification.populate('fromUser', 'displayName profilePicture email');
+        if (postId) {
+          await existingNotification.populate('postId', 'description file userId');
+        }
+        
+        return existingNotification;
+      }
     }
 
+    // Đối với comment: Cho phép nhiều thông báo comment trên cùng 1 bài viết
+    // (vì mỗi comment là nội dung khác nhau)
+    
     const notification = new Notification({
       fromUser: fromUserId,
       toUser: toUserId,
       type,
       postId,
       commentId,
-      message
+      message,
+      reactionType: type === 'like' ? reactionType : null // Chỉ lưu reactionType cho like
     });
 
     await notification.save();
@@ -160,7 +179,7 @@ const createNotification = async (fromUserId, toUserId, type, postId = null, com
     // Populate thông tin user để trả về
     await notification.populate('fromUser', 'displayName profilePicture email');
     if (postId) {
-      await notification.populate('postId', 'content imageUrl');
+      await notification.populate('postId', 'description file userId');
     }
 
     return notification;

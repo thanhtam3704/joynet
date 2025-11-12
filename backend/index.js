@@ -25,6 +25,7 @@ const authRoute = require('./routes/auth')
 const postRoute = require('./routes/posts')
 const notificationRoute = require('./routes/notifications')
 const messageRoute = require('./routes/messages')
+const followRequestRoute = require('./routes/followRequests')
 
 dotenv.config()
 console.log("MONGO_URL after load:", process.env.MONGO_URL);
@@ -80,6 +81,7 @@ app.use('/api/auth', authRoute)
 app.use('/api/posts', postRoute)
 app.use('/api/notifications', notificationRoute)
 app.use('/api/messages', messageRoute)
+app.use('/api/follow-requests', followRequestRoute)
 
 // WebSocket Authentication & Events
 require('./socket/socketHandler')(io)

@@ -70,12 +70,29 @@ class SocketService {
   onNewMessage(callback) {
     if (this.socket) {
       console.log('🎧 [SocketService] Setting up newMessage listener');
+      // Remove any existing listener first to prevent duplicates
+      this.socket.off('newMessage');
       this.socket.on('newMessage', (data) => {
-        console.log('📨 [SocketService] Raw newMessage received:', data);
+        console.log('📨 [SocketService] newMessage event received:', data);
         callback(data);
       });
     } else {
       console.error('❌ [SocketService] Cannot set up newMessage listener - no socket');
+    }
+  }
+
+  // Listen for new message notifications (for unread count updates)
+  onNewMessageNotification(callback) {
+    if (this.socket) {
+      console.log('🎧 [SocketService] Setting up newMessageNotification listener');
+      // Remove any existing listener first to prevent duplicates
+      this.socket.off('newMessageNotification');
+      this.socket.on('newMessageNotification', (data) => {
+        console.log('🔔 [SocketService] newMessageNotification event received:', data);
+        callback(data);
+      });
+    } else {
+      console.error('❌ [SocketService] Cannot set up newMessageNotification listener - no socket');
     }
   }
 
@@ -114,6 +131,52 @@ class SocketService {
   onNewNotification(callback) {
     if (this.socket) {
       this.socket.on('new_notification', callback);
+    }
+  }
+
+  // GROUP CHAT EVENTS
+  
+  // Listen for group created
+  onGroupCreated(callback) {
+    if (this.socket) {
+      console.log('👥 [SocketService] Setting up groupCreated listener');
+      this.socket.on('groupCreated', (data) => {
+        console.log('👥 [SocketService] Group created received:', data);
+        callback(data);
+      });
+    }
+  }
+
+  // Listen for member added
+  onMemberAdded(callback) {
+    if (this.socket) {
+      console.log('➕ [SocketService] Setting up memberAdded listener');
+      this.socket.on('memberAdded', (data) => {
+        console.log('➕ [SocketService] Member added received:', data);
+        callback(data);
+      });
+    }
+  }
+
+  // Listen for member removed
+  onMemberRemoved(callback) {
+    if (this.socket) {
+      console.log('➖ [SocketService] Setting up memberRemoved listener');
+      this.socket.on('memberRemoved', (data) => {
+        console.log('➖ [SocketService] Member removed received:', data);
+        callback(data);
+      });
+    }
+  }
+
+  // Listen for group updated
+  onGroupUpdated(callback) {
+    if (this.socket) {
+      console.log('🔄 [SocketService] Setting up groupUpdated listener');
+      this.socket.on('groupUpdated', (data) => {
+        console.log('🔄 [SocketService] Group updated received:', data);
+        callback(data);
+      });
     }
   }
 

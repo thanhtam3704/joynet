@@ -29,11 +29,24 @@ instance.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token expired hoặc invalid
+      // Check if this is a Google OAuth callback - don't clear token if it is
+      const hash = window.location.hash;
+      const isGoogleCallback = hash.includes('success=google_login') && hash.includes('token=');
+      
+      if (isGoogleCallback) {
+        // Don't clear token here, let the handleGoogleCallback function handle it
+        return Promise.reject(error);
+      }
+      
+      // For normal 401 errors, clear token and redirect
       localStorage.removeItem('token');
       localStorage.removeItem('user');
-      // Có thể redirect về login page ở đây
-      window.location.href = '/login';
+      
+      // Chỉ redirect nếu KHÔNG phải đang ở trang login/signup
+      const currentPath = window.location.hash.replace('#', '');
+      if (!currentPath.includes('/login') && !currentPath.includes('/signup')) {
+        window.location.hash = '#/login';
+      }
     }
     return Promise.reject(error);
   }

@@ -225,95 +225,141 @@ export default {
 <style lang="scss" scoped>
 .notifications-page {
   min-height: 100vh;
-  background: #fafafa;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  position: relative;
+  
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0) 100%);
+    pointer-events: none;
+  }
 }
 
 .notifications-content {
-  padding-top: 80px; // Account for fixed header
-  padding-bottom: 40px;
+  padding-top: 100px;
+  padding-bottom: 60px;
   min-height: calc(100vh - 120px);
+  position: relative;
+  z-index: 1;
 }
 
 .notifications-container {
-  max-width: 600px;
+  max-width: 680px;
   margin: 0 auto;
-  background: white;
-  border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.98);
+  backdrop-filter: blur(20px);
+  border-radius: 24px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15), 
+              0 0 0 1px rgba(255, 255, 255, 0.5);
   overflow: hidden;
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .notifications-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 24px 32px;
-  border-bottom: 1px solid #efefef;
-  background: #fafafa;
+  padding: 28px 36px;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
   
   h1 {
     margin: 0;
-    font-size: 24px;
-    font-weight: 600;
-    color: #262626;
+    font-size: 28px;
+    font-weight: 700;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.02em;
   }
   
   .mark-all-read-btn {
-    background: none;
-    border: 1px solid #0095f6;
-    color: #0095f6;
-    padding: 8px 16px;
-    border-radius: 4px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    border: none;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 12px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 14px;
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     
     &:hover:not(:disabled) {
-      background: #0095f6;
-      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    &:active:not(:disabled) {
+      transform: translateY(0);
     }
     
     &:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
     }
   }
 }
 
 .notifications-filters {
   display: flex;
-  padding: 16px 32px;
-  border-bottom: 1px solid #efefef;
-  gap: 8px;
+  padding: 20px 36px;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  gap: 10px;
   overflow-x: auto;
+  scrollbar-width: none;
+  
+  &::-webkit-scrollbar {
+    display: none;
+  }
   
   .filter-btn {
-    background: none;
-    border: 1px solid #dbdbdb;
-    color: #262626;
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-weight: 500;
+    background: rgba(102, 126, 234, 0.08);
+    border: 2px solid transparent;
+    color: #667eea;
+    padding: 10px 20px;
+    border-radius: 16px;
+    font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 14px;
     white-space: nowrap;
+    letter-spacing: -0.01em;
     
     &:hover {
-      background: #f8f9fa;
+      background: rgba(102, 126, 234, 0.15);
+      transform: translateY(-2px);
     }
     
     &.active {
-      background: #0095f6;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
-      border-color: #0095f6;
+      border-color: transparent;
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
     }
   }
 }
 
 .notifications-list {
-  min-height: 400px;
+  min-height: 450px;
 }
 
 .notification-items {
@@ -327,31 +373,42 @@ export default {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 32px;
+  padding: 80px 40px;
   text-align: center;
-  color: #8e8e8e;
   
   .empty-icon {
-    font-size: 64px;
-    margin-bottom: 16px;
+    width: 100px;
+    height: 100px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
     
     i {
-      font-size: inherit;
-      color: #c7c7c7;
+      font-size: 48px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
     }
   }
   
   h3 {
-    margin: 0 0 8px 0;
-    font-size: 20px;
-    font-weight: 600;
-    color: #262626;
+    margin: 0 0 12px 0;
+    font-size: 22px;
+    font-weight: 700;
+    color: #1f2937;
+    letter-spacing: -0.02em;
   }
   
   p {
     margin: 0;
     font-size: 16px;
-    line-height: 1.4;
+    line-height: 1.6;
+    color: #6b7280;
+    max-width: 400px;
   }
 }
 
@@ -360,49 +417,56 @@ export default {
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  padding: 60px 32px;
+  padding: 80px 40px;
   
   .loader {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #0095f6;
+    border: 4px solid rgba(102, 126, 234, 0.1);
+    border-top: 4px solid #667eea;
     border-radius: 50%;
-    width: 40px;
-    height: 40px;
-    animation: spin 1s linear infinite;
-    margin-bottom: 16px;
+    width: 50px;
+    height: 50px;
+    animation: spin 0.8s linear infinite;
+    margin-bottom: 20px;
   }
   
   p {
     margin: 0;
-    color: #8e8e8e;
+    color: #6b7280;
     font-size: 16px;
+    font-weight: 500;
   }
 }
 
 .load-more-container {
-  padding: 20px 32px;
+  padding: 24px 36px;
   text-align: center;
-  border-top: 1px solid #efefef;
+  border-top: 1px solid rgba(102, 126, 234, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.02) 0%, rgba(118, 75, 162, 0.02) 100%);
   
   .load-more-btn {
-    background: none;
-    border: 1px solid #0095f6;
-    color: #0095f6;
-    padding: 10px 24px;
-    border-radius: 4px;
+    background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+    border: 2px solid rgba(102, 126, 234, 0.2);
+    color: #667eea;
+    padding: 12px 32px;
+    border-radius: 14px;
     font-weight: 600;
     cursor: pointer;
-    transition: all 0.2s;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     font-size: 14px;
+    letter-spacing: -0.01em;
     
     &:hover:not(:disabled) {
-      background: #0095f6;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
       color: white;
+      border-color: transparent;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
     }
     
     &:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
     }
   }
 }
@@ -417,27 +481,56 @@ export default {
   .notifications-container {
     margin: 16px;
     max-width: none;
+    border-radius: 20px;
   }
   
   .notifications-header {
-    padding: 16px 20px;
+    padding: 20px 24px;
     
     h1 {
-      font-size: 20px;
+      font-size: 24px;
+    }
+    
+    .mark-all-read-btn {
+      padding: 8px 16px;
+      font-size: 13px;
     }
   }
   
   .notifications-filters {
-    padding: 12px 20px;
+    padding: 16px 24px;
+    gap: 8px;
+    
+    .filter-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+    }
   }
   
   .empty-state,
   .loading-container {
-    padding: 40px 20px;
+    padding: 60px 24px;
+    
+    .empty-icon {
+      width: 80px;
+      height: 80px;
+      
+      i {
+        font-size: 40px;
+      }
+    }
+    
+    h3 {
+      font-size: 20px;
+    }
+    
+    p {
+      font-size: 15px;
+    }
   }
   
   .load-more-container {
-    padding: 16px 20px;
+    padding: 20px 24px;
   }
 }
 </style>

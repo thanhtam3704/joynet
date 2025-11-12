@@ -10,7 +10,7 @@
           <Post />
         </div>
         <div class="home__timeline">
-          <Timeline @show-post-detail="openModal" />
+          <Timeline ref="timeline" @show-post-detail="openModal" />
         </div>
       </div>
       <div class="home__right-sidebar">
@@ -26,9 +26,27 @@
           v-if="selectedPostId"
           :id="selectedPostId"
           @close="closeModal"
+          @comment-added="handleCommentAdded"
         />
       </div>
     </div>
+
+    <!-- Floating New Message Button -->
+    <div class="floating-new-message" @click="showNewMessageModal = true" title="Tin nhắn mới">
+      <i class="material-icons">edit</i>
+    </div>
+
+    <!-- New Message Modal -->
+    <teleport to="body">
+      <NewMessageModal 
+        v-if="showNewMessageModal"
+        @close="showNewMessageModal = false"
+        @open-chat="handleOpenChat"
+      />
+    </teleport>
+
+    <!-- Chat Popups Manager -->
+    <ChatPopupsManager ref="chatPopupsManager" />
   </div>
 </template>
 
@@ -40,6 +58,8 @@ import TheHeader from "@/components/TheHeader";
 import TheFooter from "@/components/TheFooter";
 import PostDetail from "@/views/post/components/PostDetail.vue";
 import Post from "./components/Post.vue";
+import NewMessageModal from "@/components/NewMessageModal.vue";
+import ChatPopupsManager from "@/components/ChatPopupsManager.vue";
 
 export default {
   name: "Home",
@@ -51,11 +71,14 @@ export default {
     TheFooter,
     PostDetail,
     Post,
+    NewMessageModal,
+    ChatPopupsManager,
   },
   data() {
     return {
       showModal: false,
       selectedPostId: null,
+      showNewMessageModal: false,
     };
   },
   computed: {
@@ -67,7 +90,11 @@ export default {
     }
   },
   mounted() {
-  this.$store.dispatch("loadUser");
+    // Only load user if token exists (should already be loaded by App.vue)
+    const token = localStorage.getItem('token');
+    if (token && !this.$store.state.user) {
+      this.$store.dispatch("loadUser");
+    }
   },
   methods: {
     openModal(postId) {
@@ -94,6 +121,15 @@ export default {
         this.closeModal();
       }
     },
+    handleCommentAdded(data) {
+      // Emit event to Timeline component to update post commentsCount
+      this.$refs.timeline?.updatePostCommentsCount(data.postId, data.newCommentsCount);
+    },
+    handleOpenChat(conversation) {
+      // Open chat popup
+      this.$refs.chatPopupsManager?.openChat(conversation);
+      this.showNewMessageModal = false;
+    },
   },
 };
 </script>
@@ -102,33 +138,38 @@ export default {
 .home__content {
   display: grid;
   grid-template-columns: 3fr 10fr 4fr;
-  grid-gap: 3.3rem;
+  grid-gap: 2rem;
+  padding: 0 1rem;
 }
 
 .home__container {
-  border-radius: 2rem;
+  border-radius: var(--radius-2xl);
   display: flex;
   flex-direction: column;
   width: 100%;
   min-height: 800px;
-  margin-top: 6rem;
+  margin-top: 5.5rem;
 }
 
 .home__post {
-  margin-bottom: 2rem;
+  margin-bottom: 1.5rem;
+  animation: fadeIn 0.4s ease-out;
 }
 
 .home__timeline {
   flex-grow: 1;
+  animation: fadeIn 0.5s ease-out 0.1s both;
 }
 
 .home__right-sidebar {
   margin-right: 1rem;
   margin-top: 5rem;
+  animation: fadeIn 0.5s ease-out 0.2s both;
 }
 
 .home__left-sidebar {
   margin-top: 5rem;
+  animation: fadeIn 0.5s ease-out 0.15s both;
 }
 
 /* Modal styling */
@@ -138,26 +179,28 @@ export default {
   left: 0;
   width: 100vw;
   height: 100vh;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(8px);
   display: flex;
   justify-content: center;
   align-items: center;
   z-index: 9999;
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .modal-content {
-  background: #fff5f8;
-  border-radius: 12px;
-  padding: 1rem;
+  background: var(--white);
+  border-radius: 18px;
+  padding: 0;
   width: 90%;
-  max-width: 650px;
+  max-width: 700px;
   max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
-  animation: slideIn 0.3s ease;
+  overflow: hidden;
+  box-shadow: 
+    0 25px 50px -12px rgba(102, 126, 234, 0.25),
+    0 0 0 1px rgba(102, 126, 234, 0.1);
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
-  border: 1px solid #ffe6eb;
 }
 
 @keyframes fadeIn {
@@ -169,14 +212,181 @@ export default {
   }
 }
 
-@keyframes slideIn {
+@keyframes slideUp {
   from {
-    transform: translateY(-20px);
     opacity: 0;
+    transform: translateY(30px) scale(0.95);
   }
   to {
-    transform: translateY(0);
     opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ========== RESPONSIVE DESIGN ========== */
+
+/* Large Desktop - 1440px and above */
+@media (min-width: 1440px) {
+  .home__content {
+    grid-template-columns: 280px 1fr 320px;
+    grid-gap: 2rem;
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+}
+
+/* Desktop - 1200px to 1439px */
+@media (max-width: 1439px) {
+  .home__content {
+    grid-template-columns: 260px 1fr 280px;
+    grid-gap: 2rem;
+  }
+}
+
+/* Tablet Large - 1024px and below */
+@media (max-width: 1024px) {
+  .home__content {
+    grid-template-columns: 220px 1fr 260px;
+    grid-gap: 1.5rem;
+  }
+
+  .home__container {
+    margin-top: 5rem;
+  }
+
+  .home__right-sidebar,
+  .home__left-sidebar {
+    margin-top: 4.5rem;
+  }
+}
+
+/* Tablet - 768px and below */
+@media (max-width: 768px) {
+  .home__content {
+    grid-template-columns: 1fr;
+    grid-gap: 0;
+    padding: 0 1rem;
+  }
+
+  .home__left-sidebar,
+  .home__right-sidebar {
+    display: none; /* Ẩn sidebar trên tablet */
+  }
+
+  .home__container {
+    margin-top: 4rem;
+    width: 100%;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .home__post {
+    margin-bottom: 1.5rem;
+  }
+
+  /* Modal responsive */
+  .modal-content {
+    width: 95%;
+    max-width: 550px;
+    padding: 0.75rem;
+  }
+}
+
+/* Mobile - 480px and below */
+@media (max-width: 480px) {
+  .home__content {
+    padding: 0 0.5rem;
+  }
+
+  .home__container {
+    margin-top: 3.5rem;
+    min-height: auto;
+  }
+
+  .home__post {
+    margin-bottom: 1rem;
+  }
+
+  /* Modal responsive */
+  .modal-content {
+    width: 98%;
+    max-height: 90vh;
+    padding: 0.5rem;
+    border-radius: 8px;
+  }
+}
+
+/* Extra Small Mobile - 360px and below */
+@media (max-width: 360px) {
+  .home__content {
+    padding: 0 0.25rem;
+  }
+
+  .home__container {
+    margin-top: 3rem;
+  }
+}
+
+/* Floating New Message Button */
+.floating-new-message {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 
+    0 10px 25px rgba(102, 126, 234, 0.4),
+    0 4px 10px rgba(0, 0, 0, 0.2);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  z-index: 999;
+}
+
+.floating-new-message:hover {
+  transform: translateY(-4px) scale(1.05);
+  box-shadow: 
+    0 15px 35px rgba(102, 126, 234, 0.5),
+    0 6px 15px rgba(0, 0, 0, 0.3);
+}
+
+.floating-new-message:active {
+  transform: translateY(-2px) scale(1.02);
+}
+
+.floating-new-message i {
+  font-size: 24px;
+  transition: transform 0.3s ease;
+}
+
+.floating-new-message:hover i {
+  transform: rotate(90deg);
+}
+
+/* Responsive cho floating button */
+@media (max-width: 768px) {
+  .floating-new-message {
+    bottom: 16px;
+    right: 16px;
+    width: 48px;
+    height: 48px;
+  }
+
+  .floating-new-message i {
+    font-size: 20px;
+  }
+}
+
+@media (max-width: 480px) {
+  .floating-new-message {
+    bottom: 12px;
+    right: 12px;
   }
 }
 </style>

@@ -7,7 +7,11 @@
       :class="{ 'active': isDropdownOpen }"
       v-show="canShowActions"
     >
-      <span class="dots">⋯</span>
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+        <circle cx="10" cy="4" r="1.5"/>
+        <circle cx="10" cy="10" r="1.5"/>
+        <circle cx="10" cy="16" r="1.5"/>
+      </svg>
     </button>
 
     <!-- Dropdown menu - render in body -->
@@ -19,12 +23,24 @@
         :style="dropdownStyle"
       >
         <ul class="actions-list">
-          <li class="action-item" @click.prevent.stop="handleEdit">
-            <span class="action-icon">✏️</span>
+          <li class="action-item edit-item" @click.prevent.stop="handleEdit">
+            <div class="action-icon-wrapper">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </div>
             <span class="action-text">Chỉnh sửa bài viết</span>
           </li>
-          <li class="action-item danger" @click.prevent.stop="handleDelete">
-            <span class="action-icon">🗑️</span>
+          <li class="action-item delete-item" @click.prevent.stop="handleDelete">
+            <div class="action-icon-wrapper">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </div>
             <span class="action-text">Xóa bài viết</span>
           </li>
         </ul>
@@ -49,17 +65,21 @@
           class="delete-modal"
           @click.stop
         >
-          <div class="modal-header">
-            <h3>Xác nhận xóa bài viết</h3>
+          <div class="modal-icon">
+            <svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+              <line x1="12" y1="8" x2="12" y2="12"/>
+              <line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
           </div>
           
-          <div class="modal-body">
-            <div class="warning-icon">⚠️</div>
-            <p>Bạn có chắc chắn muốn xóa bài viết này không?</p>
-            <p class="warning-text">Hành động này không thể hoàn tác.</p>
+          <div class="modal-content">
+            <h3 class="modal-title">Xóa bài viết?</h3>
+            <p class="modal-description">Bạn có chắc chắn muốn xóa bài viết này không?</p>
+            <p class="modal-warning">Hành động này không thể hoàn tác.</p>
           </div>
           
-          <div class="modal-footer">
+          <div class="modal-actions">
             <button 
               class="btn btn-cancel"
               @click="cancelDelete"
@@ -70,6 +90,10 @@
               class="btn btn-delete"
               @click="confirmDelete"
             >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
               Xóa bài viết
             </button>
           </div>
@@ -240,110 +264,132 @@ export default {
 .post-actions {
   position: relative;
   display: inline-block;
-  /* Prevent scroll when interacting */
   contain: layout;
-  /* Ensure proper stacking context */
   z-index: 1;
 }
 
 .actions-button {
   background: transparent;
   border: none;
-  padding: 8px 12px;
-  border-radius: 6px;
+  padding: 8px;
+  border-radius: 50%;
   cursor: pointer;
   color: #65676b;
-  font-size: 16px;
-  transition: background-color 0.2s ease;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 36px;
+  width: 36px;
   height: 36px;
-  /* Prevent scroll when focused */
-  scroll-margin: 0;
   outline: none;
 }
 
 .actions-button:hover {
-  background-color: #f0f2f5;
+  background-color: rgba(102, 126, 234, 0.1);
+  color: #667eea;
 }
 
 .actions-button.active {
-  background-color: #e4e6ea;
-}
-
-.dots {
-  font-weight: bold;
-  line-height: 1;
-  display: inline-block;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.15) 0%, rgba(118, 75, 162, 0.15) 100%);
+  color: #667eea;
 }
 
 .actions-dropdown {
   position: fixed;
   background: white;
-  border: 1px solid #dadde1;
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  border: 1px solid rgba(226, 232, 240, 0.8);
+  border-radius: 12px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
   z-index: 99999;
-  width: 200px;
-  /* Ensure both items are always visible */
-  height: auto;
-  min-height: 96px;
-  overflow: visible;
+  width: 220px;
+  overflow: hidden;
+  animation: dropdownSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes dropdownSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .actions-list {
   list-style: none;
-  padding: 0;
+  padding: 6px;
   margin: 0;
 }
 
 .action-item {
   display: flex !important;
   align-items: center;
-  padding: 12px 16px;
+  padding: 12px 14px;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-  border-bottom: 1px solid #f0f2f5;
-  min-height: 48px;
-  width: 100%;
-  box-sizing: border-box;
-  /* Force visibility */
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-radius: 8px;
+  margin-bottom: 4px;
+  gap: 12px;
   visibility: visible !important;
   opacity: 1 !important;
 }
 
 .action-item:last-child {
-  border-bottom: none;
+  margin-bottom: 0;
 }
 
-.action-item:hover {
-  background-color: #f0f2f5;
-}
-
-.action-item.danger:hover {
-  background-color: #ffebee;
-}
-
-.action-icon {
-  margin-right: 12px;
-  font-size: 16px;
-  width: 20px;
+.action-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+}
+
+.edit-item .action-icon-wrapper {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  color: #667eea;
+}
+
+.delete-item .action-icon-wrapper {
+  background: linear-gradient(135deg, rgba(228, 30, 63, 0.1) 0%, rgba(220, 30, 63, 0.1) 100%);
+  color: #e41e3f;
+}
+
+.action-item:hover {
+  transform: translateX(4px);
+}
+
+.edit-item:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+}
+
+.edit-item:hover .action-icon-wrapper {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transform: scale(1.1);
+}
+
+.delete-item:hover {
+  background: linear-gradient(135deg, rgba(228, 30, 63, 0.08) 0%, rgba(220, 30, 63, 0.08) 100%);
+}
+
+.delete-item:hover .action-icon-wrapper {
+  background: linear-gradient(135deg, #e41e3f 0%, #dc1e3f 100%);
+  color: white;
+  transform: scale(1.1);
 }
 
 .action-text {
   font-size: 15px;
-  font-weight: 500;
+  font-weight: 600;
   color: #1c1e21;
   flex: 1;
-}
-
-.action-item.danger .action-text {
-  color: #e41e3f;
 }
 
 .dropdown-overlay {
@@ -364,28 +410,38 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.6);
+  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 999999;
-  backdrop-filter: blur(2px);
+  backdrop-filter: blur(4px);
+  animation: fadeIn 0.2s ease;
+  padding: 20px;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .delete-modal {
   background: white;
-  border-radius: 12px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  max-width: 400px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-  animation: modalSlideIn 0.3s ease;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  max-width: 420px;
+  width: 100%;
+  animation: modalSlideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  overflow: hidden;
 }
 
 @keyframes modalSlideIn {
   from {
-    transform: scale(0.9) translateY(-20px);
+    transform: scale(0.9) translateY(20px);
     opacity: 0;
   }
   to {
@@ -394,84 +450,95 @@ export default {
   }
 }
 
-.modal-header {
-  padding: 24px 24px 16px 24px;
-  border-bottom: 1px solid #f0f2f5;
+.modal-icon {
+  padding: 32px 32px 16px 32px;
+  display: flex;
+  justify-content: center;
 }
 
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #1c1e21;
+.modal-icon svg {
+  color: #e41e3f;
+  filter: drop-shadow(0 4px 12px rgba(228, 30, 63, 0.2));
 }
 
-.modal-body {
-  padding: 20px 24px;
+.modal-content {
+  padding: 0 32px 24px 32px;
   text-align: center;
 }
 
-.warning-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-}
-
-.modal-body p {
-  margin: 8px 0;
+.modal-title {
+  margin: 0 0 12px 0;
+  font-size: 22px;
+  font-weight: 700;
   color: #1c1e21;
+}
+
+.modal-description {
+  margin: 0 0 8px 0;
+  color: #65676b;
   font-size: 15px;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
-.warning-text {
-  color: #e41e3f !important;
-  font-weight: 500;
-  font-size: 14px !important;
+.modal-warning {
+  margin: 0;
+  color: #e41e3f;
+  font-weight: 600;
+  font-size: 14px;
 }
 
-.modal-footer {
-  padding: 16px 24px 24px 24px;
+.modal-actions {
+  padding: 20px 32px 32px 32px;
   display: flex;
   gap: 12px;
-  justify-content: flex-end;
 }
 
 .btn {
-  padding: 10px 20px;
-  border-radius: 6px;
-  border: none;
-  font-size: 14px;
+  flex: 1;
+  padding: 12px 24px;
+  border-radius: 12px;
+  border: 2px solid transparent;
+  font-size: 15px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
-  min-width: 100px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
 }
 
 .btn-cancel {
-  background: #f0f2f5;
-  color: #1c1e21;
+  background: white;
+  color: #65676b;
+  border-color: #dadde1;
 }
 
 .btn-cancel:hover {
-  background: #e4e6ea;
+  background: #f0f2f5;
+  border-color: #bcc0c4;
+  transform: translateY(-2px);
 }
 
 .btn-delete {
-  width: 35%;
-  background: #e41e3f;
+  background: linear-gradient(135deg, #e41e3f 0%, #dc1e3f 100%);
   color: white;
+  box-shadow: 0 4px 12px rgba(228, 30, 63, 0.3);
 }
 
 .btn-delete:hover {
-  background: #d91e3f;
-  transform: translateY(-1px);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(228, 30, 63, 0.4);
+}
+
+.btn-delete:active {
+  transform: translateY(0);
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
   .actions-dropdown {
-    right: -8px;
-    min-width: 180px;
+    width: 200px;
   }
   
   .action-item {
@@ -483,16 +550,50 @@ export default {
   }
   
   .delete-modal {
-    width: 95%;
     margin: 20px;
+    max-width: 100%;
   }
   
-  .modal-footer {
+  .modal-icon {
+    padding: 24px 24px 12px 24px;
+  }
+  
+  .modal-icon svg {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .modal-content {
+    padding: 0 24px 20px 24px;
+  }
+  
+  .modal-title {
+    font-size: 20px;
+  }
+  
+  .modal-actions {
+    padding: 16px 24px 24px 24px;
     flex-direction: column;
   }
   
   .btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 480px) {
+  .actions-dropdown {
+    width: 180px;
+  }
+  
+  .action-icon-wrapper {
+    width: 28px;
+    height: 28px;
+  }
+  
+  .action-icon-wrapper svg {
+    width: 16px;
+    height: 16px;
   }
 }
 </style>

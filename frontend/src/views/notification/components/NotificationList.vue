@@ -33,6 +33,7 @@
           @mark-read="markAsRead"
           @click="onNotificationClick"
           @open-post-modal="handleOpenPostModal"
+          @open-follow-requests-modal="handleOpenFollowRequestsModal"
         />
       </div>
       
@@ -184,6 +185,14 @@ export default {
       console.log('Handling open post modal:', data);
       // Emit event lên parent (TheHeader) để mở modal
       this.$emit('open-post-modal', data);
+      // Đóng dropdown notification
+      this.$emit('close');
+    },
+
+    handleOpenFollowRequestsModal() {
+      console.log('Handling open follow requests modal');
+      // Emit event lên parent (TheHeader) để mở modal
+      this.$emit('open-follow-requests-modal');
       // Đóng dropdown notification
       this.$emit('close');
     },

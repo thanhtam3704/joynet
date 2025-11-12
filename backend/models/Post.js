@@ -31,6 +31,16 @@ const PostSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+    reactions: {
+      type: Map,
+      of: String, // userId -> reactionType (like, love, haha, wow, sad, angry)
+      default: new Map(),
+    },
+    reactionsCount: {
+      type: Map,
+      of: Number, // reactionType -> count (chỉ lưu reactions có count > 0)
+      default: new Map(),
+    },
   },
   {
     timestamps: {

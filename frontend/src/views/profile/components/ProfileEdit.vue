@@ -1,4 +1,5 @@
 <template>
+<Teleport to="body">
   <div v-if="openEditProfile" class="pe-overlay" @click.self="closeModal">
     <div class="pe-modal" role="dialog" aria-modal="true" aria-labelledby="pe-title">
       <div class="pe-header">
@@ -67,6 +68,7 @@
       </form>
     </div>
   </div>
+</Teleport>
 </template>
 
 <script>
@@ -95,14 +97,9 @@ export default {
       savedScrollY: 0,
     };
   },
-  props: ["id"],
   computed: {
     user() {
-      // Nếu có ID truyền vào, lấy từ cache usersById
-      if (this.id) {
-        return this.$store.state.usersById?.[this.id] || {};
-      }
-      // Nếu không có ID, lấy current user
+      // Chỉ cho phép chỉnh sửa thông tin của chính mình (current user)
       return this.$store.state.user || {};
     },
 
@@ -127,31 +124,10 @@ export default {
   },
   methods: {
     async loadUserData() {
-      console.log('Loading user data for ID:', this.id);
+      console.log('Loading current user data for edit');
       this.isLoadingUserData = true;
       try {
-        // Nếu có ID truyền vào, load thông tin của user đó
-        if (this.id) {
-          const axios = (await import('@/utils/axios')).default;
-          const response = await axios.get(`/users/${this.id}`, { withCredentials: true });
-          
-          if (response.status === 200 && response.data) {
-            const user = response.data;
-            
-            // Cache user data trong store
-            this.$store.commit('CACHE_USER', user);
-            
-            this.displayName = user.displayName || '';
-            this.description = user.description || '';
-            this.birthDate = user.birthDate || '';
-            this.hobbies = user.hobbies || '';
-            
-            console.log('Loaded user data for ID:', this.id, user);
-            return;
-          }
-        }
-        
-        // Fallback: load current user nếu không có ID hoặc load thất bại
+        // Chỉ load thông tin của current user
         await this.$store.dispatch("loadUser");
         await this.$nextTick();
         
@@ -165,7 +141,7 @@ export default {
       } catch (error) {
         console.error('Error loading user data:', error);
         
-        // Fallback cuối cùng: thử load từ store
+        // Fallback: thử load từ store
         const user = this.$store.state.user || {};
         this.displayName = user.displayName || '';
         this.description = user.description || '';
@@ -217,7 +193,13 @@ export default {
       window.scrollTo(0, this.savedScrollY || 0);
     },
     async editProfile() {
-      const currentUser = this.id;
+      // Chỉ cho phép chỉnh sửa thông tin của chính mình
+      const currentUserId = this.$store.state.user?._id;
+      
+      if (!currentUserId) {
+        console.error('No current user found');
+        return;
+      }
 
       const formData = new FormData();
       formData.append("file", this.file);
@@ -226,7 +208,6 @@ export default {
         this.fillError = true;
       } else {
         this.isLoading = true;
-
 
         try {
           const axios = (await import('@/utils/axios')).default;
@@ -247,7 +228,7 @@ export default {
             console.log('No new profile picture, keeping existing avatar');
           }
           
-          const responseUser = await axios.put(`/users/${currentUser}/edit`, updateData, {
+          const responseUser = await axios.put(`/users/${currentUserId}/edit`, updateData, {
             withCredentials: true,
           });
 
@@ -260,7 +241,7 @@ export default {
               });
             }
 
-            const getUser = await axios.get(`/users/${currentUser}`, {
+            const getUser = await axios.get(`/users/${currentUserId}`, {
               withCredentials: true,
             });
 
@@ -275,21 +256,15 @@ export default {
               
               this.$emit("updateUser", userData);
               
-              // Cập nhật cache trong store
-              this.$store.commit('CACHE_USER', userData);
+              // Cập nhật store với thông tin mới
+              this.$store.commit("SET_USER", userData);
               
               // Cập nhật avatar trong store nếu có thay đổi file ảnh
               if (this.file && userData.profilePicture) {
                 await this.$store.dispatch("updateUserAvatar", {
-                  userId: currentUser,
+                  userId: currentUserId,
                   profilePicture: userData.profilePicture
                 });
-              } else {
-                // Nếu không thay đổi avatar, chỉ cập nhật current user nếu cần
-                const currentUserId = this.$store.state.user?._id;
-                if (currentUser === currentUserId) {
-                  this.$store.commit("SET_USER", userData);
-                }
               }
               
               this.openEditProfile = false; // Đóng modal sau khi lưu thành công
@@ -323,21 +298,10 @@ export default {
         this.unlockScroll();
       }
     },
-    // Theo dõi thay đổi của prop id
-    id: {
-      handler(newId) {
-        if (newId) {
-          this.loadUserData();
-        }
-      },
-      immediate: false
-    },
-    // Theo dõi thay đổi trong store user (chỉ cho current user)
+    // Theo dõi thay đổi trong store user (current user)
     user: {
       handler(newUser) {
-        // Chỉ cập nhật nếu đang edit current user (không có ID hoặc ID trùng với current user)
-        const currentUserId = this.$store.state.user?._id;
-        if (newUser && Object.keys(newUser).length > 0 && (!this.id || this.id === currentUserId)) {
+        if (newUser && Object.keys(newUser).length > 0) {
           this.displayName = newUser.displayName || '';
           this.description = newUser.description || '';
           this.birthDate = newUser.birthDate || '';
@@ -358,38 +322,438 @@ export default {
 </script>
 
 <style lang="scss" scoped>
-.pe-overlay { position:fixed; inset:0; background:rgba(0,0,0,.55); display:flex; align-items:center; justify-content:center; padding:100px 24px 70px; z-index:2000; overflow:hidden; }
-.pe-modal { width:100%; max-width:680px; background:#fff; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.2); display:flex; flex-direction:column; max-height:calc(100vh - 120px); }
-.pe-header { position:relative; padding:16px 56px 12px 56px; border-bottom:1px solid #eee; text-align:center; }
-.pe-header h2 { font-size:1.25rem; font-weight:600; margin:0; }
-.pe-close { position:absolute; left:16px; top:50%; transform:translateY(-50%); width:36px; height:36px; border:none; background:#f0f2f5; border-radius:50%; font-size:24px; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; }
-.pe-close:hover { background:#e4e6eb; }
-.pe-body { flex:1; overflow-y:auto; padding:16px 32px 24px; display:flex; flex-direction:column; gap:20px; }
-.pe-section { display:flex; flex-direction:column; gap:18px; }
-.pe-avatar-section { border-bottom:1px solid #f1f2f5; padding-bottom:20px; }
-.pe-avatar-wrapper { display:flex; align-items:center; gap:20px; }
-.pe-avatar { width:40px; height:40px; border-radius:100%; object-fit:cover; background:#f0f2f5; border:2px solid #fff; box-shadow:0 0 0 1px #ccc; font-size:0; }
-.pe-avatar.placeholder { display:flex; align-items:center; justify-content:center; font-weight:600; font-size:14px; color:#555; }
-.pe-avatar-wrapper { display:flex; align-items:center; gap:12px; }
-.pe-avatar-actions { display:flex; flex-direction:column; gap:8px; }
-.hidden-input { display:none; }
-.pe-field { display:flex; flex-direction:column; gap:6px; position:relative; }
-.pe-field.inline { max-width:240px; }
-.pe-field__label { font-size:.85rem; font-weight:600; color:#555; }
-.pe-input, .pe-textarea { width:100%; border:1px solid #ced0d4; border-radius:8px; background:#f5f6f7; padding:10px 12px; font-size:.9rem; font-family:inherit; resize:vertical; transition:border-color .15s, background .15s; }
-.pe-input:focus, .pe-textarea:focus { outline:none; border-color:#1877f2; background:#fff; box-shadow:0 0 0 2px rgba(24,119,242,.15); }
-.pe-textarea { min-height:80px; line-height:1.4; }
-.pe-counter { position:absolute; right:8px; bottom:6px; font-size:.65rem; color:#888; }
-.pe-footer { display:flex; justify-content:flex-end; gap:12px; padding-top:8px; border-top:1px solid #eee; }
-.pe-btn { border:none; border-radius:6px; padding:8px 16px; font-size:.85rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:6px; }
-.pe-btn-primary { background:#1877f2; color:#fff; }
-.pe-btn-primary:disabled { opacity:.6; cursor:not-allowed; }
-.pe-btn-primary:not(:disabled):hover { background:#166fe5; }
-.pe-btn-ghost { background:#e4e6eb; color:#111; }
-.pe-btn-ghost:hover { background:#d8dadf; }
-.pe-btn-secondary { background:#e4e6eb; color:#111; border:none; padding:6px 12px; font-size:.75rem; font-weight:600; border-radius:6px; cursor:pointer; }
-.pe-btn-secondary:hover { background:#d8dadf; }
-.pe-error { background:#ffe5e5; color:#b80000; border:1px solid #ffb3b3; padding:8px 12px; border-radius:6px; font-size:.75rem; font-weight:500; }
-.pe-loading { display:flex; align-items:center; gap:12px; justify-content:center; padding:20px; color:#666; font-size:.9rem; }
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { 
+    opacity: 0;
+    transform: translateY(30px) scale(0.95);
+  }
+  to { 
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.pe-overlay { 
+  position: fixed; 
+  inset: 0; 
+  background: rgba(17, 24, 39, 0.8);
+  backdrop-filter: blur(8px);
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  padding: 100px 24px 70px; 
+  z-index: 999999; 
+  overflow: hidden;
+  animation: fadeIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pe-modal { 
+  width: 100%; 
+  max-width: 680px; 
+  background: #ffffff;
+  border-radius: 18px;
+  box-shadow: 
+    0 25px 50px -12px rgba(102, 126, 234, 0.25),
+    0 0 0 1px rgba(102, 126, 234, 0.1);
+  display: flex; 
+  flex-direction: column; 
+  max-height: calc(100vh - 120px);
+  animation: slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+}
+
+.pe-header { 
+  position: relative; 
+  padding: 1.5rem 4rem 1.5rem 1.5rem;
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+}
+
+.pe-header h2 { 
+  font-size: 1.375rem;
+  font-weight: 700;
+  margin: 0;
+  text-align: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.pe-close { 
+  position: absolute; 
+  right: 1.25rem;
+  top: 50%; 
+  transform: translateY(-50%);
+  width: 40px;
+  height: 40px;
+  border: none;
+  background: rgba(102, 126, 234, 0.08);
+  border-radius: 50%;
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #667eea;
+  font-weight: 300;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.pe-close:hover { 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transform: translateY(-50%) rotate(90deg) scale(1.05);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+.pe-body { 
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.5rem 2rem 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(102, 126, 234, 0.3) transparent;
+}
+
+.pe-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pe-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pe-body::-webkit-scrollbar-thumb {
+  background: rgba(102, 126, 234, 0.3);
+  border-radius: 10px;
+}
+
+.pe-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(102, 126, 234, 0.5);
+}
+
+.pe-section { 
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.pe-avatar-section { 
+  border-bottom: 1px solid rgba(102, 126, 234, 0.1);
+  padding-bottom: 1.5rem;
+}
+
+.pe-avatar-wrapper { 
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+}
+
+.pe-avatar { 
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  border: 4px solid transparent;
+  background-clip: padding-box;
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+  font-size: 0;
+  transition: all 0.3s ease;
+  position: relative;
+}
+
+.pe-avatar::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 50%;
+  z-index: -1;
+}
+
+.pe-avatar:hover {
+  transform: scale(1.05);
+  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+.pe-avatar.placeholder { 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 1.75rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.pe-avatar-actions { 
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.hidden-input { 
+  display: none;
+}
+.pe-field { 
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+}
+
+.pe-field.inline { 
+  max-width: 300px;
+}
+
+.pe-field__label { 
+  font-size: 0.875rem;
+  font-weight: 600;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.01em;
+}
+
+.pe-input, .pe-textarea { 
+  width: 100%;
+  border: 2px solid rgba(102, 126, 234, 0.15);
+  border-radius: 12px;
+  background: rgba(102, 126, 234, 0.02);
+  padding: 0.875rem 1rem;
+  font-size: 0.9375rem;
+  font-family: inherit;
+  resize: vertical;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  color: #1f2937;
+}
+
+.pe-input:focus, .pe-textarea:focus { 
+  outline: none;
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+  transform: translateY(-1px);
+}
+
+.pe-textarea { 
+  min-height: 90px;
+  line-height: 1.5;
+}
+
+.pe-counter { 
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  font-size: 0.75rem;
+  color: #667eea;
+  background: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-weight: 500;
+}
+.pe-footer { 
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.875rem;
+  padding: 1.25rem 2rem;
+  border-top: 1px solid rgba(102, 126, 234, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+}
+
+.pe-btn { 
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1.75rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  letter-spacing: -0.01em;
+  min-width: 120px;
+  height: 44px;
+}
+
+.pe-btn-primary { 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  position: relative;
+  overflow: hidden;
+}
+
+.pe-btn-primary::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.pe-btn-primary:disabled { 
+  opacity: 0.6;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.pe-btn-primary:not(:disabled):hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 24px rgba(102, 126, 234, 0.4);
+}
+
+.pe-btn-primary:not(:disabled):hover::before {
+  opacity: 1;
+}
+
+.pe-btn-ghost { 
+  background: white;
+  color: #667eea;
+  border: 2px solid rgba(102, 126, 234, 0.2);
+}
+
+.pe-btn-ghost:hover { 
+  background: rgba(102, 126, 234, 0.05);
+  border-color: #667eea;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.pe-btn-secondary { 
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+  color: #667eea;
+  border: none;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.pe-btn-secondary:hover { 
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+}
+
+.pe-error { 
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.08) 0%, rgba(220, 38, 38, 0.08) 100%);
+  color: #ef4444;
+  border: 2px solid rgba(239, 68, 68, 0.2);
+  padding: 0.875rem 1rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.pe-error::before {
+  content: '⚠️';
+  font-size: 1.125rem;
+}
+
+.pe-loading { 
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  padding: 2rem;
+  color: #667eea;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
 @media (max-width: 720px) { .pe-modal { max-width:100%; max-height:calc(100vh - 40px); } .pe-header { padding:14px 48px 10px; } .pe-body { padding:16px 20px 24px; } .pe-overlay { padding:0 12px; } }
+
+@media (max-width: 480px) {
+  .pe-modal {
+    border-radius: 14px;
+  }
+
+  .pe-header {
+    padding: 1rem 3rem 1rem 1rem;
+  }
+
+  .pe-header h2 {
+    font-size: 1.2rem;
+  }
+
+  .pe-close {
+    width: 36px;
+    height: 36px;
+    right: 1rem;
+  }
+
+  .pe-body {
+    padding: 1rem 1.25rem 1.25rem;
+    gap: 1.25rem;
+  }
+
+  .pe-section {
+    gap: 1rem;
+  }
+
+  .pe-avatar {
+    width: 64px;
+    height: 64px;
+  }
+
+  .pe-avatar-actions {
+    gap: 0.5rem;
+  }
+
+  .pe-btn-secondary {
+    font-size: 0.8125rem;
+    padding: 0.5rem 1rem;
+  }
+
+  .pe-field__label {
+    font-size: 0.8125rem;
+  }
+
+  .pe-input,
+  .pe-textarea {
+    padding: 0.75rem 0.875rem;
+    font-size: 0.875rem;
+  }
+
+  .pe-counter {
+    font-size: 0.6875rem;
+  }
+
+  .pe-btn {
+    font-size: 0.875rem;
+    padding: 0.625rem 1.5rem;
+    min-width: 100px;
+    height: 40px;
+  }
+
+  .pe-error {
+    font-size: 0.8125rem;
+    padding: 0.75rem 0.875rem;
+  }
+  
+  .pe-footer {
+    padding: 1rem 1.25rem;
+    gap: 0.75rem;
+  }
+}
 </style>
