@@ -41,6 +41,11 @@ const PostSchema = new mongoose.Schema(
       of: Number, // reactionType -> count (chỉ lưu reactions có count > 0)
       default: new Map(),
     },
+    privacy: {
+      type: String,
+      enum: ['public', 'private'],
+      default: 'public',
+    },
   },
   {
     timestamps: {

@@ -48,8 +48,10 @@ export const getCommenters = (postId) =>
 export const getTimeline = (userId, page = 1, limit = 6) =>
   axios.get(`/posts/timeline/${userId}?page=${page}&limit=${limit}`, { withCredentials: true });
 
-export const getUserPosts = (userId, page = 1, limit = 6) =>
-  axios.get(`/posts/${userId}/posts?page=${page}&limit=${limit}`, { withCredentials: true });
+export const getUserPosts = (userId, page = 1, limit = 6, requestingUserId = null) => {
+  const url = `/posts/${userId}/posts?page=${page}&limit=${limit}${requestingUserId ? `&requestingUserId=${requestingUserId}` : ''}`;
+  return axios.get(url, { withCredentials: true });
+};
 
 export const createPost = (post) =>
   axios.post('/posts/', post, { withCredentials: true });

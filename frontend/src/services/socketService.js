@@ -134,6 +134,18 @@ class SocketService {
     }
   }
 
+  // Reaction events
+  onMessageReactionUpdated(callback) {
+    if (this.socket) {
+      console.log('👍 [SocketService] Setting up messageReactionUpdated listener');
+      this.socket.off('messageReactionUpdated');
+      this.socket.on('messageReactionUpdated', (data) => {
+        console.log('👍 [SocketService] messageReactionUpdated event received:', data);
+        callback(data);
+      });
+    }
+  }
+
   // GROUP CHAT EVENTS
   
   // Listen for group created

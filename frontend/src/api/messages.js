@@ -1,9 +1,9 @@
 import http from '@/utils/axios';
 
 const MessageAPI = {
-  // Lấy danh sách conversations
-  getConversations() {
-    return http.get('/messages/conversations');
+  // Lấy danh sách conversations (hỗ trợ phân trang)
+  getConversations(page = 1, limit = 20) {
+    return http.get('/messages/conversations', { params: { page, limit } });
   },
 
   // Lấy messages trong một conversation
@@ -58,6 +58,11 @@ const MessageAPI = {
   // Lấy số lượng tin nhắn chưa đọc
   getUnreadCount() {
     return http.get('/messages/unread-count');
+  },
+
+  // Thêm/sửa/xóa reaction
+  addReaction(messageId, emoji) {
+    return http.post(`/messages/messages/${messageId}/reaction`, { emoji });
   }
 };
 

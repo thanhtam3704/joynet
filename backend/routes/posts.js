@@ -14,6 +14,7 @@ router.post("/", async (req, res) => {
   const sanitizedisImage = sanitize(req.sanitize(req.body.isImagePost));
   const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
   const sanitizedFile = sanitize(req.sanitize(req.body.file));
+  const sanitizedPrivacy = sanitize(req.sanitize(req.body.privacy)) || 'public';
 
   const newPost = await new Post({
     description: sanitizedDesc,
@@ -21,6 +22,7 @@ router.post("/", async (req, res) => {
     isImagePost: sanitizedisImage,
     userId: sanitizedUserId,
     file: sanitizedFile,
+    privacy: sanitizedPrivacy,
   });
 
   try {
@@ -166,8 +168,15 @@ router.get("/timeline/:userId", async (req, res) => {
     // Lấy tất cả userId cần query (bản thân + followings)
     const userIds = [currentUser._id, ...currentUser.followings];
     
-    // Query posts với pagination
-    const posts = await Post.find({ userId: { $in: userIds } })
+    // Query posts với pagination - lọc private posts (chỉ hiển thị public hoặc private của chính mình)
+    const posts = await Post.find({ 
+      userId: { $in: userIds },
+      $or: [
+        { privacy: 'public' },
+        { privacy: { $exists: false } }, // Bài cũ không có field privacy - coi như public
+        { privacy: 'private', userId: req.params.userId }
+      ]
+    })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -212,8 +221,15 @@ router.get("/timeline/:userId", async (req, res) => {
       return postObj;
     });
     
-    // Đếm tổng số posts để tính hasMore
-    const totalPosts = await Post.countDocuments({ userId: { $in: userIds } });
+    // Đếm tổng số posts để tính hasMore - chỉ đếm public và private của mình
+    const totalPosts = await Post.countDocuments({ 
+      userId: { $in: userIds },
+      $or: [
+        { privacy: 'public' },
+        { privacy: { $exists: false } }, // Bài cũ không có field privacy
+        { privacy: 'private', userId: req.params.userId }
+      ]
+    });
     const hasMore = skip + posts.length < totalPosts;
     
     // Debug log
@@ -246,8 +262,18 @@ router.get("/:userId/posts", async (req, res) => {
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 6;
     const skip = (page - 1) * limit;
+    const requestingUserId = req.query.requestingUserId; // User đang xem profile
 
-    const posts = await Post.find({ userId: req.params.userId })
+    // Lọc posts: nếu là chính user thì hiển thị tất cả, còn không chỉ hiển thị public
+    const query = { userId: req.params.userId };
+    if (requestingUserId !== req.params.userId) {
+      query.$or = [
+        { privacy: 'public' },
+        { privacy: { $exists: false } } // Bài cũ không có field privacy - coi như public
+      ];
+    }
+
+    const posts = await Post.find(query)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limit);
@@ -273,7 +299,7 @@ router.get("/:userId/posts", async (req, res) => {
       return postObj;
     });
     
-    const totalPosts = await Post.countDocuments({ userId: req.params.userId });
+    const totalPosts = await Post.countDocuments(query);
     const hasMore = skip + posts.length < totalPosts;
 
     return res.status(200).json({
@@ -653,6 +679,7 @@ router.put("/:id", async (req, res) => {
     const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
     const sanitizedDescription = sanitize(req.sanitize(req.body.description));
     const sanitizedFile = sanitize(req.sanitize(req.body.file));
+    const sanitizedPrivacy = sanitize(req.sanitize(req.body.privacy));
 
     const post = await Post.findById(sanitizedPostId);
 
@@ -672,6 +699,9 @@ router.put("/:id", async (req, res) => {
     }
     if (sanitizedFile !== undefined) {
       updateData.file = sanitizedFile;
+    }
+    if (sanitizedPrivacy !== undefined) {
+      updateData.privacy = sanitizedPrivacy;
     }
     updateData.updatedAt = new Date();
 

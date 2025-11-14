@@ -13,6 +13,13 @@ export const getSuggestedContacts = (limit = 5, offset = 0) =>
     params: { limit, offset }
   });
 
+export const getRecentFollowers = (limit = 5, offset = 0) =>
+  axios.get('/users/followers/recent', { 
+    withCredentials: true,
+    headers: { token: localStorage.getItem('token') },
+    params: { limit, offset }
+  });
+
 export const searchUsers = (query) =>
   axios.get('/users/', { 
     withCredentials: true,

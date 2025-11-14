@@ -25,6 +25,31 @@
           <ProfileImage :id="currentUser._id || id" class="fb-user-row__avatar" />
           <div class="fb-user-row__meta">
             <div class="fb-user-row__name">{{ currentUser.displayName || currentUser.name || currentUser.email || 'Người dùng' }}</div>
+            <div class="privacy-selector" @click="togglePrivacy">
+              <i class="material-icons">{{ privacy === 'public' ? 'public' : 'lock' }}</i>
+              <span>{{ privacy === 'public' ? 'Công khai' : 'Chỉ mình tôi' }}</span>
+              <i class="material-icons arrow">arrow_drop_down</i>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Privacy Dropdown -->
+        <div class="privacy-dropdown" v-if="showPrivacyMenu" @click.stop>
+          <div class="privacy-option" :class="{ active: privacy === 'public' }" @click="selectPrivacy('public')">
+            <i class="material-icons">public</i>
+            <div class="privacy-option-text">
+              <span class="privacy-title">Công khai</span>
+              <span class="privacy-desc">Mọi người đều có thể xem</span>
+            </div>
+            <i class="material-icons check" v-if="privacy === 'public'">check_circle</i>
+          </div>
+          <div class="privacy-option" :class="{ active: privacy === 'private' }" @click="selectPrivacy('private')">
+            <i class="material-icons">lock</i>
+            <div class="privacy-option-text">
+              <span class="privacy-title">Chỉ mình tôi</span>
+              <span class="privacy-desc">Chỉ bạn có thể xem</span>
+            </div>
+            <i class="material-icons check" v-if="privacy === 'private'">check_circle</i>
           </div>
         </div>
 
@@ -109,6 +134,8 @@ export default {
       textDescription: "",
       fillError: false,
       postingSuccess: "",
+      privacy: 'public',
+      showPrivacyMenu: false,
     };
   },
   computed: {
@@ -177,6 +204,7 @@ export default {
           isImagePost: !!this.file, // true nếu có file, false nếu không
           userId: (this.currentUser && this.currentUser._id) || this.id,
           file: fileName, // null nếu không có file
+          privacy: this.privacy, // Thêm privacy
         };
 
         try {
@@ -207,6 +235,13 @@ export default {
           );
         }
       }
+    },
+    togglePrivacy() {
+      this.showPrivacyMenu = !this.showPrivacyMenu;
+    },
+    selectPrivacy(privacy) {
+      this.privacy = privacy;
+      this.showPrivacyMenu = false;
     },
   },
   mounted() {
@@ -374,6 +409,104 @@ export default {
   color: #1f2937;
   font-size: 1rem;
   letter-spacing: -0.01em;
+}
+
+.privacy-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  color: #667eea;
+  font-weight: 500;
+  width: fit-content;
+
+  &:hover {
+    background: rgba(102, 126, 234, 0.15);
+  }
+
+  i {
+    font-size: 16px;
+  }
+
+  .arrow {
+    font-size: 18px;
+    margin-left: -2px;
+  }
+}
+
+.privacy-dropdown {
+  position: absolute;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  margin-top: 8px;
+  z-index: 1000;
+  min-width: 280px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.privacy-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+
+  &:hover {
+    background: rgba(102, 126, 234, 0.08);
+  }
+
+  &.active {
+    background: rgba(102, 126, 234, 0.1);
+  }
+
+  i {
+    color: #667eea;
+    font-size: 22px;
+  }
+
+  .check {
+    margin-left: auto;
+    color: #667eea;
+  }
+}
+
+.privacy-option-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.privacy-title {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9375rem;
+}
+
+.privacy-desc {
+  color: #6b7280;
+  font-size: 0.8125rem;
+  margin-top: 2px;
 }
 
 .fb-input {

@@ -99,27 +99,46 @@ router.get('/suggested/contacts', verifyToken, async (req, res) => {
     const conversations = await Conversation.find({
       participants: userId,
       isActive: true
-    }).populate('participants', '_id displayName profilePicture isOnline lastSeen');
+    }).populate('participants', '_id displayName profilePicture isOnline lastSeen').lean();
     
     const contactMap = new Map();
     
+    // Lấy tất cả user IDs từ conversations và tin nhắn gần nhất
+    const conversationIds = conversations.map(c => c._id);
+    
+    // Tìm tin nhắn gần nhất cho mỗi conversation (optimize query)
+    const lastMessages = await Message.aggregate([
+      { $match: { conversationId: { $in: conversationIds } } },
+      { $sort: { createdAt: -1 } },
+      { $group: {
+          _id: '$conversationId',
+          lastMessage: { $first: '$$ROOT' }
+        }
+      }
+    ]);
+    
+    const lastMsgMap = new Map();
+    lastMessages.forEach(item => {
+      lastMsgMap.set(item._id.toString(), item.lastMessage.createdAt);
+    });
+    
     // Lấy tất cả user IDs từ conversations
     for (const conv of conversations) {
+      const lastMsgTime = lastMsgMap.get(conv._id.toString()) || new Date(0);
+      
       for (const p of conv.participants) {
         if (p._id.toString() !== userId) {
-          // Tìm tin nhắn gần nhất trong conversation này
-          const lastMsg = await Message.findOne({
-            conversationId: conv._id
-          }).sort({ createdAt: -1 });
-          
           const isFollowing = following.some(f => f.toString() === p._id.toString());
           
-          contactMap.set(p._id.toString(), {
-            user: p,
-            lastInteraction: lastMsg?.createdAt || new Date(0),
-            isFollowing: isFollowing,
-            score: isFollowing ? 100 : 50
-          });
+          // Chỉ lưu user với thời gian tin nhắn mới nhất
+          if (!contactMap.has(p._id.toString()) || 
+              contactMap.get(p._id.toString()).lastInteraction < lastMsgTime) {
+            contactMap.set(p._id.toString(), {
+              user: p,
+              lastInteraction: lastMsgTime,
+              isFollowing: isFollowing
+            });
+          }
         }
       }
     }
@@ -134,16 +153,14 @@ router.get('/suggested/contacts', verifyToken, async (req, res) => {
           contactMap.set(idStr, {
             user: user,
             lastInteraction: new Date(0),
-            isFollowing: true,
-            score: 100
+            isFollowing: true
           });
         }
       }
     }
     
-    // Sắp xếp: Following trước, sau đó theo thời gian tương tác
+    // Sắp xếp theo thời gian tương tác (tin nhắn gần nhất trước)
     const sortedContacts = Array.from(contactMap.values()).sort((a, b) => {
-      if (a.score !== b.score) return b.score - a.score;
       return b.lastInteraction - a.lastInteraction;
     });
     
@@ -159,6 +176,76 @@ router.get('/suggested/contacts', verifyToken, async (req, res) => {
     });
   } catch (err) {
     console.error('Get suggested contacts error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+//GET RECENT FOLLOWINGS (người đang theo dõi gần nhất)
+router.get('/followers/recent', verifyToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const limit = parseInt(req.query.limit) || 5;
+    const offset = parseInt(req.query.offset) || 0;
+    
+    const currentUser = await User.findById(userId);
+    if (!currentUser) return res.status(404).json({ error: 'User not found' });
+
+    const followings = currentUser.followings || []; // Đổi từ followers sang followings
+    
+    if (followings.length === 0) {
+      return res.status(200).json({
+        users: [],
+        total: 0,
+        hasMore: false
+      });
+    }
+    
+    // Lấy thông tin người đang theo dõi
+    const followingUsers = await User.find({
+      _id: { $in: followings }
+    }).select('displayName email profilePicture isOnline lastSeen');
+    
+    // Tìm notification follow của user này để biết thời gian follow
+    const followNotifications = await Notification.find({
+      fromUser: userId,
+      type: 'follow',
+      userId: { $in: followings }
+    }).sort({ createdAt: -1 });
+    
+    // Map following với thời gian follow
+    const followingMap = new Map();
+    followingUsers.forEach(user => {
+      followingMap.set(user._id.toString(), {
+        user: user,
+        followedAt: new Date(0) // Default nếu không tìm thấy notification
+      });
+    });
+    
+    // Update thời gian từ notifications
+    followNotifications.forEach(notif => {
+      const targetUserId = notif.userId.toString();
+      if (followingMap.has(targetUserId)) {
+        followingMap.get(targetUserId).followedAt = notif.createdAt;
+      }
+    });
+    
+    // Sắp xếp theo thời gian follow (mới nhất trước)
+    const sortedFollowings = Array.from(followingMap.values()).sort((a, b) => {
+      return b.followedAt - a.followedAt;
+    });
+    
+    // Pagination
+    const total = sortedFollowings.length;
+    const paginatedFollowings = sortedFollowings.slice(offset, offset + limit);
+    const result = paginatedFollowings.map(f => f.user);
+    
+    return res.status(200).json({
+      users: result,
+      total: total,
+      hasMore: (offset + limit) < total
+    });
+  } catch (err) {
+    console.error('Get recent followings error:', err);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -201,23 +288,52 @@ router.get('/:userId', async (req, res) => {
 router.put('/:id/follow', async (req, res) => {
   if (req.body.userId !== req.params.id) {
     try {
-      const user = await User.findById(req.params.id)
-      const currentUser = await User.findById(req.body.userId)
-      if (!user.followers.includes(req.body.userId)) {
-        await user.updateOne({ $push: { followers: req.body.userId } }) //add current user to user's followers
-        await currentUser.updateOne({ $push: { followings: req.params.id } }) //add user to current user's followings
+      const user = await User.findById(req.params.id);
+      const currentUser = await User.findById(req.body.userId);
+      const FollowRequest = require('../models/FollowRequest.js');
+      
+      // Kiểm tra đã follow chưa
+      if (user.followers.includes(req.body.userId)) {
+        return res.status(403).json({ error: 'you already follow this user' });
+      }
+      
+      // Nếu tài khoản là private
+      if (user.isPrivate) {
+        // Kiểm tra đã gửi request chưa
+        const existingRequest = await FollowRequest.findOne({
+          fromUser: req.body.userId,
+          toUser: req.params.id,
+          status: 'pending'
+        });
         
-        // Tạo/cập nhật thông báo follow (sử dụng createNotification để tránh spam)
+        if (existingRequest) {
+          return res.status(200).json({ 
+            message: 'request already sent',
+            isPrivate: true,
+            requestSent: true
+          });
+        }
+        
+        // Tạo follow request mới
+        const newRequest = new FollowRequest({
+          fromUser: req.body.userId,
+          toUser: req.params.id,
+          status: 'pending'
+        });
+        
+        await newRequest.save();
+        
+        // Tạo notification
         const notification = await createNotification(
-          req.body.userId,      // fromUser
-          req.params.id,        // toUser
-          'follow',             // type
-          null,                 // postId
-          null,                 // commentId
-          `${currentUser.displayName || currentUser.email} đã theo dõi bạn`
+          req.body.userId,
+          req.params.id,
+          'follow_request',
+          null,
+          null,
+          `${currentUser.displayName || currentUser.email} đã gửi yêu cầu theo dõi bạn`
         );
-
-        // Emit WebSocket notification nếu có notification mới hoặc updated
+        
+        // Emit WebSocket notification
         if (notification) {
           const io = req.app.get('io');
           if (io) {
@@ -225,17 +341,47 @@ router.put('/:id/follow', async (req, res) => {
           }
         }
         
-        return res.status(200).json('user has been followed')
-      } else {
-        return res.status(403).json('you already follow this user')
+        return res.status(200).json({ 
+          message: 'follow request sent',
+          isPrivate: true,
+          requestSent: true
+        });
       }
+      
+      // Tài khoản public - follow trực tiếp
+      await user.updateOne({ $push: { followers: req.body.userId } });
+      await currentUser.updateOne({ $push: { followings: req.params.id } });
+      
+      // Tạo notification follow
+      const notification = await createNotification(
+        req.body.userId,
+        req.params.id,
+        'follow',
+        null,
+        null,
+        `${currentUser.displayName || currentUser.email} đã theo dõi bạn`
+      );
+
+      if (notification) {
+        const io = req.app.get('io');
+        if (io) {
+          io.emitNewNotification(notification, req.params.id);
+        }
+      }
+      
+      return res.status(200).json({ 
+        message: 'user has been followed',
+        isPrivate: false,
+        requestSent: false
+      });
     } catch (err) {
-      return res.status(500).json(err)
+      console.error('Follow error:', err);
+      return res.status(500).json(err);
     }
   } else {
-    return res.status(403).json('you cant follow yourself')
+    return res.status(403).json({ error: 'you cant follow yourself' });
   }
-})
+});
 
 //UNFOLLOW A USER
 router.put('/:id/unfollow', async (req, res) => {

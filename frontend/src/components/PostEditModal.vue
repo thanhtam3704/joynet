@@ -15,6 +15,31 @@
           <ProfileImage :id="currentUser._id" class="user-avatar" />
           <div class="user-details">
             <span class="user-name">{{ currentUser.displayName || currentUser.email }}</span>
+            <div class="privacy-selector" @click="togglePrivacy">
+              <i class="material-icons">{{ editedPrivacy === 'public' ? 'public' : 'lock' }}</i>
+              <span>{{ editedPrivacy === 'public' ? 'Công khai' : 'Chỉ mình tôi' }}</span>
+              <i class="material-icons arrow">arrow_drop_down</i>
+            </div>
+          </div>
+        </div>
+
+        <!-- Privacy Dropdown -->
+        <div class="privacy-dropdown" v-if="showPrivacyMenu" @click.stop>
+          <div class="privacy-option" :class="{ active: editedPrivacy === 'public' }" @click="selectPrivacy('public')">
+            <i class="material-icons">public</i>
+            <div class="privacy-option-text">
+              <span class="privacy-title">Công khai</span>
+              <span class="privacy-desc">Mọi người đều có thể xem</span>
+            </div>
+            <i class="material-icons check" v-if="editedPrivacy === 'public'">check_circle</i>
+          </div>
+          <div class="privacy-option" :class="{ active: editedPrivacy === 'private' }" @click="selectPrivacy('private')">
+            <i class="material-icons">lock</i>
+            <div class="privacy-option-text">
+              <span class="privacy-title">Chỉ mình tôi</span>
+              <span class="privacy-desc">Chỉ bạn có thể xem</span>
+            </div>
+            <i class="material-icons check" v-if="editedPrivacy === 'private'">check_circle</i>
           </div>
         </div>
 
@@ -122,7 +147,9 @@ export default {
       isSaving: false,
       isUploading: false,
       errorMessage: '',
-      placeholder: 'Bạn đang nghĩ gì?'
+      placeholder: 'Bạn đang nghĩ gì?',
+      editedPrivacy: 'public',
+      showPrivacyMenu: false,
     };
   },
   computed: {
@@ -133,7 +160,8 @@ export default {
       if (!this.post) return false;
       const descriptionChanged = this.editedDescription !== (this.post.description || '');
       const imageChanged = this.newImageFile !== null || this.editedImageUrl !== (this.post.file || '');
-      return descriptionChanged || imageChanged;
+      const privacyChanged = this.editedPrivacy !== (this.post.privacy || 'public');
+      return descriptionChanged || imageChanged || privacyChanged;
     },
     currentImageUrl() {
       if (this.newImageFile) {
@@ -179,13 +207,16 @@ export default {
       if (this.post) {
         this.editedDescription = this.post.description || '';
         this.editedImageUrl = this.post.file || '';
+        this.editedPrivacy = this.post.privacy || 'public';
       } else {
         this.editedDescription = '';
         this.editedImageUrl = '';
+        this.editedPrivacy = 'public';
       }
       this.newImageFile = null;
       this.errorMessage = '';
       this.isSaving = false;
+      this.showPrivacyMenu = false;
     },
     autoResize() {
       this.$nextTick(() => {
@@ -253,7 +284,8 @@ export default {
         const updatedPost = {
           ...this.post,
           description: this.editedDescription,
-          file: imageFileName
+          file: imageFileName,
+          privacy: this.editedPrivacy
         };
 
         this.$emit('save', updatedPost);
@@ -286,6 +318,13 @@ export default {
         console.error('Upload error:', error);
         throw new Error('Không thể tải lên ảnh. Vui lòng thử lại.');
       }
+    },
+    togglePrivacy() {
+      this.showPrivacyMenu = !this.showPrivacyMenu;
+    },
+    selectPrivacy(privacy) {
+      this.editedPrivacy = privacy;
+      this.showPrivacyMenu = false;
     }
   },
   beforeUnmount() {
@@ -451,12 +490,112 @@ export default {
 
 .user-details {
   flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 .user-name {
   font-weight: 600;
   font-size: 15px;
   color: #1c1e21;
+}
+
+.privacy-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+  padding: 6px 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 0.875rem;
+  color: #667eea;
+  font-weight: 500;
+  width: fit-content;
+}
+
+.privacy-selector:hover {
+  background: rgba(102, 126, 234, 0.15);
+}
+
+.privacy-selector i {
+  font-size: 16px;
+}
+
+.privacy-selector .arrow {
+  font-size: 18px;
+  margin-left: -2px;
+}
+
+.privacy-dropdown {
+  position: absolute;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  margin-top: 8px;
+  z-index: 1000;
+  min-width: 280px;
+  animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.privacy-option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.privacy-option:hover {
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.privacy-option.active {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.privacy-option i {
+  color: #667eea;
+  font-size: 22px;
+}
+
+.privacy-option .check {
+  margin-left: auto;
+  color: #667eea;
+}
+
+.privacy-option-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.privacy-title {
+  font-weight: 600;
+  color: #1f2937;
+  font-size: 0.9375rem;
+}
+
+.privacy-desc {
+  color: #6b7280;
+  font-size: 0.8125rem;
+  margin-top: 2px;
 }
 
 .content-editor {

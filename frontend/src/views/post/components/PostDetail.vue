@@ -19,19 +19,21 @@
     </div>
 
     <div class="timeline__text-post">
-      <Skeletor circle size="50" class="skeletor" v-if="isSkeletorLoading" />
-      <Skeletor
-        v-if="isSkeletorLoading"
-        class="skeletor"
-        width="600"
-        height="20"
-      />
-      <Skeletor
-        v-if="isSkeletorLoading"
-        class="skeletor"
-        width="600"
-        height="300"
-      />
+      <div v-if="isSkeletorLoading" class="post-detail-skeleton">
+        <div class="skeleton-main">
+          <Skeletor circle width="50" height="50" />
+          <div class="skeleton-content">
+            <Skeletor width="150" height="16" />
+            <Skeletor width="100" height="12" style="margin-top: 6px;" />
+          </div>
+        </div>
+        <Skeletor width="100%" height="80" style="margin-top: 12px; border-radius: 8px;" />
+        <Skeletor width="100%" height="300" style="margin-top: 12px; border-radius: 12px;" />
+        <div class="skeleton-actions">
+          <Skeletor width="100" height="36" style="border-radius: 8px;" />
+          <Skeletor width="100" height="36" style="border-radius: 8px;" />
+        </div>
+      </div>
       <div class="main-post" v-else>
         <ProfileImage :id="posts.userId"  />
 
@@ -41,6 +43,14 @@
             <span class="post-time" v-if="posts.createdAt">
               {{ formatFullDateTime(posts.createdAt) }}
             </span>
+          </div>
+          <div class="privacy-indicator" v-if="posts.privacy === 'private'">
+            <span class="material-icons">lock</span>
+            <span class="privacy-text">Chỉ mình tôi</span>
+          </div>
+          <div class="privacy-indicator privacy-public" v-else-if="posts.privacy === 'public'">
+            <span class="material-icons">public</span>
+            <span class="privacy-text">Công khai</span>
           </div>
           <p class="text-post__content" v-if="posts.description">
             {{ posts.description }}
@@ -803,6 +813,35 @@ export default {
   color: #667eea;
 }
 
+.privacy-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(107, 114, 128, 0.08);
+  border-radius: 14px;
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+  margin: 0.25rem 0 0.25rem 0;
+  border: 1px solid rgba(107, 114, 128, 0.12);
+  width: fit-content;
+  max-width: max-content;
+}
+
+.privacy-indicator.privacy-public {
+  background: rgba(102, 126, 234, 0.08);
+  border-color: rgba(102, 126, 234, 0.12);
+  color: var(--primary);
+}
+
+.privacy-indicator .material-icons {
+  font-size: 0.9375rem;
+}
+
+.privacy-text {
+  font-weight: 500;
+}
+
 .comments-section {
   width: 100%;
   margin-top: 1.5rem;
@@ -1441,6 +1480,30 @@ export default {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.post-detail-skeleton {
+  padding: 1.5rem;
+}
+
+.skeleton-main {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
 }
 
 /* Invisible trigger for infinite scroll */

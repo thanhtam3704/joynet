@@ -12,9 +12,9 @@
       <div 
         class="message-bubble-container"
         :class="{ 'outgoing': isMyMessage(message) }"
+        v-if="shouldRenderMessage(message)"
       >
         <div class="message-avatar" v-if="message && !isMyMessage(message)">
-          {{ logMessageForDebug(message) }}
           <img 
             v-if="message && message.senderAvatar"
             :src="getAvatarUrl(message.senderAvatar)" 
@@ -29,43 +29,95 @@
             alt="Default Avatar" 
           />
         </div>
-        <div 
-          class="message-bubble"
-          :class="{ 
-            'outgoing': isMyMessage(message),
-            'incoming': !isMyMessage(message)
-          }"
-        >
-          <div v-if="message && message.messageType === 'image'" class="message-image">
-            <img 
-              :src="message && (message.fileUrl || (message.file ? `http://localhost:3000/uploads/${message.file}` : ''))" 
-              alt="Image" 
-              @load="handleImageLoad"
-              @error="handleImageError"
-            />
-            <div v-if="!message.fileUrl && !message.file" class="debug-info" style="color: red; font-size: 10px;">
-              No image URL found
+        
+        <div class="message-content-wrapper">
+          <div 
+            class="message-bubble"
+            :class="{ 
+              'outgoing': isMyMessage(message),
+              'incoming': !isMyMessage(message)
+            }"
+            @mousedown="startLongPress($event, message)"
+            @mouseup="cancelLongPress"
+            @mouseleave="cancelLongPress"
+            @touchstart.passive="startLongPress($event, message)"
+            @touchend.passive="cancelLongPress"
+          >
+            <div v-if="message && message.messageType === 'image'" class="message-image">
+              <img 
+                :src="message && (message.fileUrl || (message.file ? `http://localhost:3000/uploads/${message.file}` : ''))" 
+                alt="Image" 
+                @load="handleImageLoad"
+                @error="handleImageError"
+              />
+              <div v-if="!message.fileUrl && !message.file" class="debug-info" style="color: red; font-size: 10px;">
+                No image URL found
+              </div>
+            </div>
+            <div v-else-if="message && message.messageType === 'file'" class="message-file">
+              <i class="material-icons">attach_file</i>
+              <span>{{ message && (message.fileName || message.file) || '' }}</span>
+            </div>
+            <span v-if="message && message.content">{{ message.content }}</span>
+            <div v-if="message && message.isSending" class="message-status">
+              <i class="material-icons sending">schedule</i>
             </div>
           </div>
-          <div v-else-if="message && message.messageType === 'file'" class="message-file">
-            <i class="material-icons">attach_file</i>
-            <span>{{ message && (message.fileName || message.file) || '' }}</span>
-          </div>
-          <span v-if="message && message.content">{{ message.content }}</span>
-          <div v-if="message && message.isSending" class="message-status">
-            <i class="material-icons sending">schedule</i>
-          </div>
+          
+          <!-- Message Reactions Summary - Moved outside bubble -->
+          <MessageReactionsSummary 
+            v-if="message"
+            :reactions="getMessageReactions(message)"
+            @show-reactors="showMessageReactors(message)"
+          />
         </div>
       </div>
     </div>
     
     <div class="messages-end" ref="messagesEnd"></div>
+    
+    <!-- Floating Emoji Animation -->
+    <transition-group name="float" tag="div" class="floating-emojis">
+      <div 
+        v-for="emoji in floatingEmojis" 
+        :key="emoji.id"
+        class="floating-emoji"
+        :style="{ left: emoji.x + 'px', top: emoji.y + 'px' }"
+      >
+        {{ emoji.emoji }}
+      </div>
+    </transition-group>
+    
+    <!-- Reaction Picker -->
+    <MessageReactionPicker 
+      :show="showReactionPicker"
+      :position="reactionPickerPosition"
+      :selected-message="selectedMessage"
+      :current-user-id="currentUserId"
+      @select="handleReactionSelect"
+    />
+    
+    <!-- Message Reactors Modal -->
+    <MessageReactorsModal 
+      :show="showReactorsModal"
+      :reactions="selectedMessageForReactors ? getMessageReactions(selectedMessageForReactors) : []"
+      @close="showReactorsModal = false"
+    />
   </div>
 </template>
 
 <script>
+import MessageReactionPicker from '@/components/MessageReactionPicker.vue';
+import MessageReactionsSummary from '@/components/MessageReactionsSummary.vue';
+import MessageReactorsModal from '@/components/MessageReactorsModal.vue';
+
 export default {
   name: 'ChatMessages',
+  components: {
+    MessageReactionPicker,
+    MessageReactionsSummary,
+    MessageReactorsModal
+  },
   props: {
     messages: {
       type: Array,
@@ -76,6 +128,21 @@ export default {
       required: true
     }
   },
+  data() {
+    return {
+      showReactionPicker: false,
+      reactionPickerPosition: { top: 0, left: 0 },
+      selectedMessage: null,
+      longPressTimer: null,
+      longPressDuration: 500, // milliseconds
+      floatingEmojis: [], // For floating animation
+      lastEvent: null,
+      showReactorsModal: false,
+      selectedMessageForReactors: null,
+      shouldAutoScroll: true,
+      previousMessagesLength: 0
+    };
+  },
   computed: {
     // Group messages by time (messages within 2 minutes of each other)
     groupedMessages() {
@@ -85,34 +152,20 @@ export default {
   methods: {
     isMyMessage(message) {
       if (!message) return false;
-      
-      // Ưu tiên sử dụng flag trực tiếp nếu có
-      if (typeof message.isMyMessage === 'boolean') {
-        console.log(`🎯 Using flag - Message "${message.content}" is ${message.isMyMessage ? 'MINE' : 'THEIRS'}`);
-        return message.isMyMessage;
-      }
-      
-      // Fallback về comparison logic
-      if (!message.senderId || !this.currentUserId) {
-        console.log('Debug: Missing data', { 
-          message: !!message, 
-          senderId: message?.senderId, 
-          currentUserId: this.currentUserId 
-        });
-        return false;
-      }
-      
-      // Convert both to string để đảm bảo so sánh đúng
-      const isMe = String(message.senderId) === String(this.currentUserId);
-      console.log('Debug: Message comparison', { 
-        senderId: message.senderId, 
-        currentUserId: this.currentUserId, 
-        isMe,
-        senderType: typeof message.senderId,
-        currentType: typeof this.currentUserId
-      });
-      
-      return isMe;
+      if (!message.senderId || !this.currentUserId) return false;
+      const senderId = String(message.senderId);
+      const currentUserId = String(this.currentUserId);
+      return senderId === currentUserId;
+    },
+
+    shouldRenderMessage(message) {
+      if (!message) return false;
+      // Show if has text content
+      if (message.content && String(message.content).trim().length > 0) return true;
+      // Show if has media/file
+      if (message.messageType === 'image' && (message.fileUrl || message.file)) return true;
+      if (message.messageType === 'file' && (message.fileName || message.file)) return true;
+      return false;
     },
     formatDate(timestamp) {
       if (!timestamp) return '';
@@ -185,22 +238,17 @@ export default {
     },
     
     getAvatarUrl(avatarPath) {
-      console.log('🖼️ Getting avatar URL for:', avatarPath, typeof avatarPath);
-      
       if (!avatarPath) {
-        console.log('❌ No avatar path provided');
         return '';
       }
       
       // Nếu đã là absolute URL (bắt đầu bằng http/https)
       if (avatarPath.startsWith('http')) {
-        console.log('✅ Using Google/absolute URL directly:', avatarPath);
         return avatarPath; // Trả về nguyên URL cho Google OAuth avatar
       }
       
       // Nếu là relative path (uploaded avatar), thêm base URL  
       const fullUrl = `http://localhost:3000/uploads/user/${avatarPath}`;
-      console.log('✅ Constructed local URL:', fullUrl);
       return fullUrl;
     },
     
@@ -217,15 +265,187 @@ export default {
       event.target.src = require('@/assets/defaultProfile.png');
     },
     
+    // Reaction Methods
+    startLongPress(event, message) {
+      if (!message) return;
+      
+      event.preventDefault();
+      
+      this.selectedMessage = message;
+      this.lastEvent = event;
+      
+      this.longPressTimer = setTimeout(() => {
+        this.showReactionPickerAtPosition(event);
+      }, this.longPressDuration);
+    },
+    
+    cancelLongPress() {
+      if (this.longPressTimer) {
+        clearTimeout(this.longPressTimer);
+        this.longPressTimer = null;
+      }
+    },
+    
+    showReactionPickerAtPosition(event) {
+      const bubble = event.target.closest('.message-bubble');
+      if (!bubble) return;
+      const rect = bubble.getBoundingClientRect();
+      
+      console.log('🎯 [ChatMessages] Opening picker for message:', {
+        messageId: this.selectedMessage?._id,
+        reactions: this.selectedMessage?.reactions,
+        currentUserId: this.currentUserId
+      });
+      
+      // Place picker BELOW the message bubble (like chat popup)
+      const PICKER_HALF_WIDTH = 190; // ~380px / 2 (see picker component)
+      this.reactionPickerPosition = {
+        top: rect.bottom + 8, // below bubble with small gap
+        left: rect.left + (rect.width / 2) - PICKER_HALF_WIDTH
+      };
+      this.showReactionPicker = true;
+      
+      // Delay to prevent immediate close
+      setTimeout(() => {
+        document.addEventListener('click', this.handleClickOutsideReactionPicker);
+      }, 100);
+    },
+    
+    handleClickOutsideReactionPicker(event) {
+      if (this.showReactionPicker) {
+        const picker = document.querySelector('.reaction-picker');
+        const messageBubble = event.target.closest('.message-bubble');
+        const isClickInsidePicker = picker && picker.contains(event.target);
+        
+        // Chỉ đóng khi click bên ngoài cả picker VÀ message bubble
+        if (!isClickInsidePicker && !messageBubble) {
+          this.showReactionPicker = false;
+          this.selectedMessage = null;
+          document.removeEventListener('click', this.handleClickOutsideReactionPicker);
+        }
+      }
+    },
+    
+    handleReactionSelect(emoji) {
+      if (this.selectedMessage) {
+        const currentUserId = this.currentUserId;
+        const existingReaction = this.selectedMessage.reactions?.find(r => r.userId === currentUserId);
+        const newReaction = existingReaction?.emoji === emoji ? null : emoji;
+        this.applyReaction(this.selectedMessage, newReaction);
+      }
+      this.showReactionPicker = false;
+      this.selectedMessage = null;
+      document.removeEventListener('click', this.handleClickOutsideReactionPicker);
+    },
+    
+    applyReaction(message, reaction) {
+      // Create floating emoji animation
+      if (reaction) {
+        this.createFloatingEmoji(reaction, this.lastEvent);
+      }
+      
+      // Update local message object
+      // Convert message.reactions to array format if needed
+      if (!message.reactions) {
+        message.reactions = [];
+      }
+      
+      const currentUserId = this.currentUserId;
+      const existingReactionIndex = message.reactions.findIndex(
+        r => r.userId === currentUserId
+      );
+      
+      if (reaction) {
+        // Add or update reaction
+        const currentUser = this.$store?.state?.user;
+        const reactionObj = {
+          userId: currentUserId,
+          userName: currentUser?.displayName || currentUser?.email || 'Bạn',
+          userAvatar: currentUser?.profilePicture || null,
+          emoji: reaction
+        };
+        
+        if (existingReactionIndex !== -1) {
+          // Update existing - Vue 3 auto tracks
+          message.reactions[existingReactionIndex] = reactionObj;
+        } else {
+          // Add new
+          message.reactions.push(reactionObj);
+        }
+      } else {
+        // Remove reaction
+        if (existingReactionIndex !== -1) {
+          message.reactions.splice(existingReactionIndex, 1);
+        }
+      }
+      
+      // Emit event to parent to save reaction
+      this.$emit('add-reaction', {
+        messageId: message._id,
+        reaction: reaction
+      });
+    },
+    
+    createFloatingEmoji(emoji, clickEvent) {
+      const id = Date.now() + Math.random();
+      const floatingEmoji = {
+        id,
+        emoji,
+        x: clickEvent ? clickEvent.clientX : window.innerWidth / 2,
+        y: clickEvent ? clickEvent.clientY : window.innerHeight / 2
+      };
+      
+      this.floatingEmojis.push(floatingEmoji);
+      
+      // Remove after animation completes
+      setTimeout(() => {
+        const index = this.floatingEmojis.findIndex(e => e.id === id);
+        if (index !== -1) {
+          this.floatingEmojis.splice(index, 1);
+        }
+      }, 1000);
+    },
+    
+    getMessageReactions(message) {
+      // Convert old format to new format if needed
+      if (message.reaction && !message.reactions) {
+        return [{
+          userId: message.senderId,
+          userName: 'Unknown',
+          userAvatar: null,
+          emoji: message.reaction
+        }];
+      }
+      return message.reactions || [];
+    },
+    
+    showMessageReactors(message) {
+      this.selectedMessageForReactors = message;
+      this.showReactorsModal = true;
+    },
+    
     logMessageForDebug(message) {
       return ''; // Method for debugging, now cleaned up
     }
   },
   updated() {
-    this.scrollToBottom();
+    if (this.shouldAutoScroll) {
+      this.scrollToBottom();
+    }
   },
   mounted() {
     this.scrollToBottom();
+  },
+  watch: {
+    messages(newMessages, oldMessages) {
+      // Chỉ auto scroll khi có tin nhắn mới thêm vào
+      if (newMessages.length > oldMessages.length) {
+        this.shouldAutoScroll = true;
+      } else {
+        // Nếu chỉ update reactions/properties, không scroll
+        this.shouldAutoScroll = false;
+      }
+    }
   }
 };
 </script>
@@ -234,6 +454,7 @@ export default {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1.25rem;
   display: flex;
   flex-direction: column;
@@ -302,12 +523,14 @@ export default {
 
 .message-bubble-container {
   display: flex;
-  align-items: flex-end;
+  flex-direction: row;
+  align-items: flex-start;
   margin-bottom: 0.5rem;
   animation: messageSlideIn 0.3s ease;
   
   &.outgoing {
-    justify-content: flex-end;
+    flex-direction: row-reverse;
+    align-items: flex-start;
   }
 }
 
@@ -329,6 +552,7 @@ export default {
   margin-right: 10px;
   flex-shrink: 0;
   border: 2px solid rgba(102, 126, 234, 0.15);
+  align-self: flex-start;
   
   img {
     width: 100%;
@@ -338,10 +562,23 @@ export default {
   }
 }
 
+.message-content-wrapper {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 70%;
+  width: fit-content;
+}
+
+.message-bubble-container.outgoing .message-content-wrapper {
+  align-items: flex-end;
+}
+
 .message-bubble {
   padding: 0.75rem 1rem;
   border-radius: 18px;
-  max-width: 70%;
+  max-width: 100%;
+  width: fit-content;
   word-break: break-word;
   font-size: 0.9375rem;
   line-height: 1.5;
@@ -433,6 +670,93 @@ export default {
     font-size: 14px;
     color: rgba(255, 255, 255, 0.8);
     animation: rotate 1s linear infinite;
+  }
+}
+
+.message-reaction {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 2px solid white;
+  animation: popIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.message-reaction:hover {
+  transform: scale(1.2);
+}
+
+.message-bubble {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+}
+
+/* Floating Emoji Animation */
+.floating-emojis {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+}
+
+.floating-emoji {
+  position: fixed;
+  font-size: 48px;
+  animation: floatUp 1s ease-out forwards;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-60px) scale(1.3) rotate(15deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px) scale(0.8) rotate(-10deg);
+  }
+}
+
+.float-enter-active {
+  animation: floatUp 1s ease-out;
+}
+
+.float-leave-active {
+  animation: fadeOut 0.3s ease-out;
+}
+
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 

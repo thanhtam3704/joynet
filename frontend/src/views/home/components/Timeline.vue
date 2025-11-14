@@ -1,9 +1,24 @@
 <template>
   <div class="timeline">
     <!-- Các khối Skeletor để hiển thị hiệu ứng tải -->
-    <Skeletor circle size="50" class="skeletor" v-if="isLoading" />
-    <Skeletor v-if="isLoading" class="skeletor" width="100%" height="20" />
-    <Skeletor v-if="isLoading" class="skeletor" width="100%" height="300" />
+    <template v-if="isLoading">
+      <div class="post-skeleton" v-for="i in 3" :key="'skeleton-' + i">
+        <div class="skeleton-header">
+          <Skeletor circle width="50" height="50" />
+          <div class="skeleton-header-text">
+            <Skeletor width="150" height="16" />
+            <Skeletor width="100" height="12" style="margin-top: 6px;" />
+          </div>
+        </div>
+        <Skeletor width="100%" height="80" style="margin-top: 12px; border-radius: 8px;" />
+        <Skeletor width="100%" height="300" style="margin-top: 12px; border-radius: 12px;" />
+        <div class="skeleton-actions">
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+        </div>
+      </div>
+    </template>
 
     <!-- Sau khi load xong sẽ hiển thị danh sách bài post -->
     <div
@@ -32,6 +47,14 @@
               @edit-post="openEditModal"
               @delete-post="handleDeletePost"
             />
+          </div>
+          <div class="privacy-indicator" v-if="post.privacy === 'private'">
+            <span class="material-icons">lock</span>
+            <span class="privacy-text">Chỉ mình tôi</span>
+          </div>
+          <div class="privacy-indicator privacy-public" v-else-if="post.privacy === 'public'">
+            <span class="material-icons">public</span>
+            <span class="privacy-text">Công khai</span>
           </div>
           <div class="user-post-desc">
             <p
@@ -521,6 +544,7 @@ export default {
         const postData = {
           description: updatedPost.description,
           file: updatedPost.file,
+          privacy: updatedPost.privacy,
           userId: currentUserId
         };
         
@@ -686,6 +710,35 @@ export default {
 
 .post-time:hover {
   color: var(--primary);
+}
+
+.privacy-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(107, 114, 128, 0.08);
+  border-radius: 14px;
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+  margin: 0.25rem 0 0.5rem 0;
+  border: 1px solid rgba(107, 114, 128, 0.12);
+  width: fit-content;
+  max-width: max-content;
+}
+
+.privacy-indicator.privacy-public {
+  background: rgba(102, 126, 234, 0.08);
+  border-color: rgba(102, 126, 234, 0.12);
+  color: var(--primary);
+}
+
+.privacy-indicator .material-icons {
+  font-size: 0.9375rem;
+}
+
+.privacy-text {
+  font-weight: 500;
 }
 
 .post__user-post a {
@@ -1339,6 +1392,35 @@ export default {
   font-size: 0.9375rem;
   color: var(--gray-600);
   font-weight: 500;
+}
+
+/* Post Skeleton */
+.post-skeleton {
+  background: white;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.skeleton-header {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.skeleton-header-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
 }
 
 .end-message {

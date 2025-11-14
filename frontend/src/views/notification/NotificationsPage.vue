@@ -85,8 +85,14 @@
         </div>
 
         <div v-else class="loading-container">
-          <div class="loader"></div>
-          <p>Đang tải thông báo...</p>
+          <div class="notification-skeleton" v-for="i in 8" :key="'skeleton-' + i">
+            <Skeletor circle width="48" height="48" />
+            <div class="skeleton-content">
+              <Skeletor width="200" height="16" />
+              <Skeletor width="150" height="12" style="margin-top: 6px;" />
+              <Skeletor width="100" height="10" style="margin-top: 6px;" />
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -96,6 +102,7 @@
 </template>
 
 <script>
+import { Skeletor } from 'vue-skeletor';
 import TheHeader from '@/components/TheHeader.vue';
 import TheFooter from '@/components/TheFooter.vue';
 import NotificationItem from './components/NotificationItem.vue';
@@ -105,7 +112,8 @@ export default {
   components: {
     TheHeader,
     TheFooter,
-    NotificationItem
+    NotificationItem,
+    Skeletor
   },
   data() {
     return {
@@ -474,6 +482,20 @@ export default {
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
+}
+
+.notification-skeleton {
+  display: flex;
+  align-items: flex-start;
+  padding: 1rem 1.5rem;
+  gap: 12px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.skeleton-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
 }
 
 // Mobile responsive

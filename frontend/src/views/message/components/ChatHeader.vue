@@ -2,19 +2,33 @@
   <div class="chat-header">
     <div class="chat-header-user">
       <div class="chat-header-avatar">
-        <img 
-          v-if="conversation && conversation.recipientAvatar"
-          :src="conversation && conversation.recipientAvatar ? `http://localhost:3000/uploads/user/${conversation.recipientAvatar}` : ''" 
-          alt="Avatar"
-        />
-        <img 
-          v-else
-          src="@/assets/defaultProfile.png" 
-          alt="Default Avatar"
-        />
+        <!-- Group chat: prefer custom group avatar, else show group icon -->
+        <template v-if="conversation && conversation.isGroup">
+          <img
+            v-if="conversation.groupAvatar"
+            :src="`http://localhost:3000/uploads/user/${conversation.groupAvatar}`"
+            alt="Group Avatar"
+          />
+          <div v-else class="group-avatar-icon">
+            <i class="material-icons">groups</i>
+          </div>
+        </template>
+        <!-- 1-1 chat avatar -->
+        <template v-else>
+          <img 
+            v-if="conversation && conversation.recipientAvatar"
+            :src="`http://localhost:3000/uploads/user/${conversation.recipientAvatar}`" 
+            alt="Avatar"
+          />
+          <img 
+            v-else
+            src="@/assets/defaultProfile.png" 
+            alt="Default Avatar"
+          />
+        </template>
       </div>
       <div class="chat-header-info">
-        <div class="chat-header-name">{{ conversation && conversation.recipientName || 'Unknown User' }}</div>
+        <div class="chat-header-name">{{ getConversationTitle() }}</div>
         <div class="chat-header-status">{{ getActivityStatus() }}</div>
       </div>
     </div>
@@ -42,19 +56,18 @@ export default {
     }
   },
   methods: {
+    getConversationTitle() {
+      if (!this.conversation) return 'Unknown User';
+      if (this.conversation.isGroup) {
+        return this.conversation.groupName || this.conversation.recipientName || 'Nhóm chat';
+      }
+      return this.conversation.recipientName || 'Unknown User';
+    },
     getActivityStatus() {
       if (!this.conversation) return '';
       
-      // Debug log
-      console.log('ChatHeader conversation data:', {
-        recipientLastSeen: this.conversation.recipientLastSeen,
-        recipientIsOnline: this.conversation.recipientIsOnline,
-        recipientName: this.conversation.recipientName
-      });
-      
       // Nếu không có lastSeen hoặc lastSeen không hợp lệ thì không hiển thị gì
-      if (!this.conversation.recipientLastSeen) {
-        console.log('No lastSeen data, returning empty');
+      if (this.conversation.isGroup || !this.conversation.recipientLastSeen) {
         return '';
       }
       
@@ -63,24 +76,14 @@ export default {
       
       // Kiểm tra lastSeen có hợp lệ không
       if (isNaN(lastSeen.getTime())) {
-        console.log('Invalid lastSeen date, returning empty');
         return '';
       }
       
       const diffMs = now - lastSeen;
       const diffMinutes = Math.floor(diffMs / (1000 * 60));
       
-      console.log('Time calculation:', {
-        lastSeen: lastSeen.toISOString(),
-        now: now.toISOString(),
-        diffMs: diffMs,
-        diffMinutes: diffMinutes,
-        isOnline: this.conversation.recipientIsOnline
-      });
-      
       // Nếu lastSeen trong tương lai (không hợp lý) thì không hiển thị
       if (diffMs < 0) {
-        console.log('LastSeen in future, returning empty');
         return '';
       }
       
@@ -92,7 +95,6 @@ export default {
       // Không hiển thị gì nếu lâu quá không online (hơn 24 giờ)
       const diffHours = Math.floor(diffMinutes / 60);
       if (diffHours > 24) {
-        console.log('More than 24 hours, returning empty');
         return '';
       }
       
@@ -147,6 +149,21 @@ export default {
   &:hover {
     border-color: rgba(102, 126, 234, 0.4);
     transform: scale(1.05);
+  }
+}
+
+/* Group Avatar Icon (match ConversationList style) */
+.group-avatar-icon {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  .material-icons {
+    color: white;
+    font-size: 24px;
   }
 }
 

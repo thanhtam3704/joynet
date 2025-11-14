@@ -1,18 +1,20 @@
 <template>
   <div class="profile">
-    <Skeletor circle size="50" class="skeletor" v-if="isSkeletorLoading" />
-    <Skeletor
-      v-if="isSkeletorLoading"
-      class="skeletor"
-      width="600"
-      height="20"
-    />
-    <Skeletor
-      v-if="isSkeletorLoading"
-      class="skeletor"
-      width="600"
-      height="300"
-    />
+    <div v-if="isSkeletorLoading" class="profile-skeleton">
+      <div class="skeleton-header">
+        <Skeletor circle width="120" height="120" />
+        <div class="skeleton-info">
+          <Skeletor width="200" height="24" />
+          <Skeletor width="150" height="16" style="margin-top: 8px;" />
+          <div class="skeleton-stats">
+            <Skeletor width="100" height="14" />
+            <Skeletor width="100" height="14" />
+          </div>
+          <Skeletor width="120" height="36" style="margin-top: 12px; border-radius: 8px;" />
+        </div>
+      </div>
+      <Skeletor width="100%" height="80" style="margin-top: 20px; border-radius: 8px;" />
+    </div>
     <div class="profile-all" v-else>
       <div class="profile-info">
         <div class="profile-avatar">
@@ -925,6 +927,31 @@ export default {
   .detail__content {
     font-size: 0.875rem;
   }
+}
+
+.profile-skeleton {
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.skeleton-header {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.skeleton-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-stats {
+  display: flex;
+  gap: 20px;
+  margin-top: 12px;
 }
 
 @media (max-width: 480px) {

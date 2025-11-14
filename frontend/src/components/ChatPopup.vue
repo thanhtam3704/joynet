@@ -98,16 +98,32 @@
               class="message-avatar"
             />
             
-            <div class="message-bubble" :class="{ 'own-bubble': isOwnMessage(message) }">
-              <div v-if="message.messageType === 'image'" class="message-image">
-                <img :src="`http://localhost:3000/uploads/${message.file}`" alt="Image" />
+            <div class="message-with-reactions">
+              <div 
+                class="message-bubble" 
+                :class="{ 'own-bubble': isOwnMessage(message) }"
+                @mousedown="startLongPress($event, message)"
+                @mouseup="cancelLongPress"
+                @mouseleave="cancelLongPress"
+                @touchstart="startLongPress($event, message)"
+                @touchend="cancelLongPress"
+              >
+                <div v-if="message.messageType === 'image'" class="message-image">
+                  <img :src="`http://localhost:3000/uploads/${message.file}`" alt="Image" />
+                </div>
+                <div v-else-if="message.messageType === 'file'" class="message-file">
+                  <i class="material-icons">attach_file</i>
+                  <span>{{ message.file }}</span>
+                </div>
+                <p v-else class="message-text">{{ message.content }}</p>
+                <span class="message-time">{{ formatTime(message.createdAt) }}</span>
               </div>
-              <div v-else-if="message.messageType === 'file'" class="message-file">
-                <i class="material-icons">attach_file</i>
-                <span>{{ message.file }}</span>
-              </div>
-              <p v-else class="message-text">{{ message.content }}</p>
-              <span class="message-time">{{ formatTime(message.createdAt) }}</span>
+              
+              <!-- Message Reactions Summary - BÊN NGOÀI BUBBLE -->
+              <MessageReactionsSummary 
+                :reactions="getMessageReactions(message)"
+                @show-reactors="showMessageReactors(message)"
+              />
             </div>
           </div>
           <!-- Anchor element để scroll tới -->
@@ -146,6 +162,34 @@
       </div>
     </div>
     
+    <!-- Reaction Picker -->
+    <MessageReactionPicker 
+      :show="showReactionPicker"
+      :position="reactionPickerPosition"
+      :selected-message="selectedMessage"
+      :current-user-id="currentUserId"
+      @select="handleReactionSelect"
+    />
+    
+    <!-- Floating Emoji Animation -->
+    <transition-group name="float" tag="div" class="floating-emojis">
+      <div 
+        v-for="emoji in floatingEmojis" 
+        :key="emoji.id"
+        class="floating-emoji"
+        :style="{ left: emoji.x + 'px', top: emoji.y + 'px' }"
+      >
+        {{ emoji.emoji }}
+      </div>
+    </transition-group>
+    
+    <!-- Message Reactors Modal -->
+    <MessageReactorsModal 
+      :show="showReactorsModal"
+      :reactions="selectedMessageForReactors ? getMessageReactions(selectedMessageForReactors) : []"
+      @close="showReactorsModal = false"
+    />
+    
     <!-- Group Members Modal -->
     <teleport to="body">
       <GroupMembersModal 
@@ -167,11 +211,17 @@
 import MessageAPI from '@/api/messages';
 import socketService from '@/services/socketService';
 import GroupMembersModal from './GroupMembersModal.vue';
+import MessageReactionPicker from './MessageReactionPicker.vue';
+import MessageReactionsSummary from './MessageReactionsSummary.vue';
+import MessageReactorsModal from './MessageReactorsModal.vue';
 
 export default {
   name: 'ChatPopup',
   components: {
-    GroupMembersModal
+    GroupMembersModal,
+    MessageReactionPicker,
+    MessageReactionsSummary,
+    MessageReactorsModal
   },
   props: {
     conversation: {
@@ -191,7 +241,16 @@ export default {
       loading: false,
       selectedFile: null,
       currentUserId: this.$store.state.user?._id,
-      showMembersModal: false
+      showMembersModal: false,
+      showReactionPicker: false,
+      reactionPickerPosition: { top: 0, left: 0 },
+      selectedMessage: null,
+      longPressTimer: null,
+      longPressDuration: 500,
+      floatingEmojis: [],
+      lastEvent: null,
+      showReactorsModal: false,
+      selectedMessageForReactors: null
     }
   },
   watch: {
@@ -199,13 +258,11 @@ export default {
       handler(newId, oldId) {
         // Leave old conversation
         if (oldId) {
-          console.log('🚪 Leaving old conversation:', oldId)
           socketService.leaveConversation(oldId)
         }
         
         // Load and join new conversation
         if (newId) {
-          console.log('🚀 Joining new conversation:', newId)
           this.loadMessages()
           socketService.joinConversation(newId)
         }
@@ -216,14 +273,32 @@ export default {
       // Khi mở rộng popup (từ minimized → expanded)
       if (!newVal) {
         this.markConversationAsRead()
+        
+        // Scroll xuống tin nhắn mới nhất khi mở popup
+        this.$nextTick(() => {
+          setTimeout(() => {
+            this.scrollToBottom()
+          }, 300)
+        })
       }
     }
   },
   mounted() {
-    console.log('🎧 ChatPopup mounted, setting up socket listeners')
     // Đợi một chút để đảm bảo socket đã connect
     this.$nextTick(() => {
       this.setupSocketListeners()
+      
+      // Scroll xuống tin nhắn mới nhất khi mở popup lần đầu - tăng delay lên 1s
+      setTimeout(() => {
+        console.log('🚀 [ChatPopup mounted] Triggering scroll to bottom');
+        this.scrollToBottom()
+      }, 1000)
+      
+      // Thử lại lần nữa để chắc chắn
+      setTimeout(() => {
+        console.log('🚀 [ChatPopup mounted] 2nd scroll attempt');
+        this.scrollToBottom()
+      }, 1500)
     })
   },
   beforeUnmount() {
@@ -233,6 +308,7 @@ export default {
       socketService.leaveConversation(this.conversation._id)
     }
     socketService.off('newMessage', this.handleNewMessage)
+    socketService.off('messageReactionUpdated', this.handleReactionUpdate)
   },
   methods: {
     setupSocketListeners() {
@@ -246,8 +322,8 @@ export default {
         // Đợi socket connect xong rồi setup listener
         setTimeout(() => {
           if (socketService.getConnectionStatus()) {
-            console.log('✅ Socket connected, setting up listener')
             socketService.onNewMessage(this.handleNewMessage)
+            socketService.onMessageReactionUpdated(this.handleReactionUpdate)
           } else {
             console.error('❌ Socket connection failed')
           }
@@ -255,11 +331,52 @@ export default {
       } else {
         // Socket đã connect, setup listener ngay
         socketService.onNewMessage(this.handleNewMessage)
+        socketService.onMessageReactionUpdated(this.handleReactionUpdate)
+      }
+    },
+
+    handleReactionUpdate(data) {
+      console.log('👍 Reaction update received:', data)
+      const { messageId, reactions, userId } = data
+      
+      console.log('🔍 [Frontend] Raw reactions from socket:', JSON.stringify(reactions, null, 2))
+      
+      // Find and update message
+      const message = this.messages.find(m => m._id === messageId)
+      if (message) {
+        // Convert backend format to frontend format
+        message.reactions = reactions.map(r => {
+          const user = r.user || {}
+          console.log('🔍 [Frontend] Processing user:', user)
+          const userName = user.displayName || 
+                          (user.email ? user.email.split('@')[0] : null) ||
+                          'Unknown User'
+          
+          console.log('🔍 [Frontend] Mapped userName:', userName)
+          
+          return {
+            userId: user._id || r.user,
+            userName: userName,
+            userAvatar: user.profilePicture || null,
+            emoji: r.emoji
+          }
+        })
+        
+        console.log('🔍 [Frontend] Final message.reactions:', message.reactions)
+        
+        // Show floating emoji if someone else reacted
+        if (userId && userId !== this.currentUserId) {
+          const userReaction = reactions.find(r => 
+            (r.user?._id || r.user) === userId
+          )
+          if (userReaction) {
+            this.createFloatingEmoji(userReaction.emoji, null)
+          }
+        }
       }
     },
 
     handleNewMessage(data) {
-      console.log('📨 New message received in ChatPopup:', data)
       
       // Normalize data structure
       let message, conversationId
@@ -288,14 +405,12 @@ export default {
       
       // Chỉ xử lý tin nhắn thuộc conversation hiện tại
       if (conversationId !== this.conversation._id) {
-        console.log('⏭️ Message not for this conversation, ignoring')
         return
       }
       
       // Kiểm tra tin nhắn đã tồn tại chưa (tránh duplicate)
       const exists = this.messages.some(m => m && m._id === message._id)
       if (exists) {
-        console.log('⏭️ Message already exists, ignoring')
         return
       }
       
@@ -306,7 +421,6 @@ export default {
         const tempIndex = this.messages.findIndex(m => m && m.isTemp)
         if (tempIndex !== -1) {
           // Thay tin nhắn temp bằng tin nhắn thật
-          console.log('🔄 Replacing temp message with real message from socket')
           this.messages.splice(tempIndex, 1, message)
           
           // Scroll to bottom
@@ -316,8 +430,26 @@ export default {
           return
         }
       }
+
       
-      console.log('✅ Adding new message to popup:', message)
+      // Đảm bảo message có sender đầy đủ
+      if (!message.sender || typeof message.sender === 'string') {
+        // Nếu sender là string hoặc không tồn tại, tạo object sender
+        const currentUser = this.$store.state.user
+        const senderId = message.sender || message.sender?._id
+        
+        message.sender = {
+          _id: senderId,
+          displayName: senderId === currentUser._id ? currentUser.displayName : 'Unknown',
+          profilePicture: senderId === currentUser._id ? currentUser.profilePicture : null
+        }
+      } else if (!message.sender.displayName || !message.sender._id) {
+        // Sender là object nhưng thiếu thông tin
+        const currentUser = this.$store.state.user
+        message.sender._id = message.sender._id || currentUser._id
+        message.sender.displayName = message.sender.displayName || currentUser.displayName
+        message.sender.profilePicture = message.sender.profilePicture || currentUser.profilePicture
+      }
       
       // Thêm tin nhắn mới vào danh sách
       this.messages.push(message)
@@ -350,11 +482,40 @@ export default {
       try {
         const response = await MessageAPI.getMessages(this.conversation._id)
         if (response.status === 200) {
-          this.messages = response.data.messages || []
+          // Map messages với reactions đúng format
+          this.messages = (response.data.messages || []).map(msg => ({
+            ...msg,
+            reactions: (msg.reactions || []).map(r => {
+              const user = r.user || {}
+              const userName = user.displayName || 
+                              (user.email ? user.email.split('@')[0] : null) ||
+                              'Unknown User'
+              
+              return {
+                userId: user._id || r.user,
+                userName: userName,
+                userAvatar: user.profilePicture || null,
+                emoji: r.emoji
+              }
+            })
+          }))
           
-          // Scroll to bottom sau khi load
+          // Scroll to bottom sau khi load - với nhiều lần thử
           this.$nextTick(() => {
+            console.log('🔄 [loadMessages] Messages loaded, scrolling...');
             this.scrollToBottom()
+            
+            // Thử lại sau 300ms để đảm bảo DOM render xong
+            setTimeout(() => {
+              console.log('🔄 [loadMessages] 2nd scroll attempt');
+              this.scrollToBottom()
+            }, 300)
+            
+            // Thử lại lần cuối sau 600ms
+            setTimeout(() => {
+              console.log('🔄 [loadMessages] Final scroll attempt');
+              this.scrollToBottom()
+            }, 600)
           })
         }
         
@@ -511,16 +672,33 @@ export default {
     },
 
     scrollToBottom() {
-      // Sử dụng messagesEnd anchor để scroll
-      if (this.$refs.messagesEnd) {
-        this.$refs.messagesEnd.scrollIntoView({ behavior: 'smooth', block: 'end' })
+      console.log('📜 [ChatPopup] Scrolling to bottom...');
+      
+      // Dùng messagesContainer với scrollTop
+      if (this.$refs.messagesContainer) {
+        const container = this.$refs.messagesContainer;
+        console.log('✅ Using messagesContainer ref, scrollHeight:', container.scrollHeight, 'clientHeight:', container.clientHeight);
+        
+        // Force reflow để đảm bảo layout đã hoàn thành
+        void container.offsetHeight;
+        
+        // Dùng requestAnimationFrame để scroll sau khi browser paint
+        requestAnimationFrame(() => {
+          container.scrollTop = container.scrollHeight;
+          console.log('📍 [RAF] Scrolled to:', container.scrollTop);
+          
+          // Double check sau 50ms
+          setTimeout(() => {
+            container.scrollTop = container.scrollHeight;
+            console.log('📍 [Timeout] Final scroll to:', container.scrollTop);
+          }, 50);
+        });
       }
       
-      // Fallback: Dùng scrollTop nếu messagesEnd không tồn tại
-      if (this.$refs.messagesContainer && !this.$refs.messagesEnd) {
-        setTimeout(() => {
-          this.$refs.messagesContainer.scrollTop = this.$refs.messagesContainer.scrollHeight
-        }, 100)
+      // Fallback: Sử dụng messagesEnd anchor
+      if (this.$refs.messagesEnd) {
+        console.log('✅ Also using messagesEnd ref');
+        this.$refs.messagesEnd.scrollIntoView({ behavior: 'instant', block: 'end' })
       }
     },
 
@@ -540,6 +718,176 @@ export default {
 
     triggerImageInput() {
       this.$refs.imageInput.click()
+    },
+    
+    // Reaction Methods
+    startLongPress(event, message) {
+      if (!message) return
+      
+      // Prevent text selection
+      event.preventDefault()
+      
+      this.selectedMessage = message
+      this.lastEvent = event // Save event for floating animation
+      
+      this.longPressTimer = setTimeout(() => {
+        this.showReactionPickerAtPosition(event)
+      }, this.longPressDuration)
+    },
+    
+    cancelLongPress() {
+      if (this.longPressTimer) {
+        clearTimeout(this.longPressTimer)
+        this.longPressTimer = null
+      }
+    },
+    
+    showReactionPickerAtPosition(event) {
+      const rect = event.target.closest('.message-bubble').getBoundingClientRect()
+      this.reactionPickerPosition = {
+        top: rect.top - 60,
+        left: rect.left + (rect.width / 2) - 130
+      }
+      this.showReactionPicker = true
+      
+      // Delay adding click outside listener to prevent immediate close
+      setTimeout(() => {
+        document.addEventListener('click', this.handleClickOutside)
+      }, 100)
+    },
+    
+    handleClickOutside(event) {
+      if (this.showReactionPicker) {
+        const picker = document.querySelector('.reaction-picker')
+        const messageBubble = event.target.closest('.message-bubble')
+        const isClickInsidePicker = picker && picker.contains(event.target)
+        
+        // Chỉ đóng khi click bên ngoài cả picker VÀ message bubble
+        if (!isClickInsidePicker && !messageBubble) {
+          this.showReactionPicker = false
+          this.selectedMessage = null
+          document.removeEventListener('click', this.handleClickOutside)
+        }
+      }
+    },
+    
+    handleReactionSelect(emoji) {
+      if (this.selectedMessage) {
+        // Check if user already reacted with this emoji
+        const currentUserId = this.currentUserId
+        const existingReaction = this.selectedMessage.reactions?.find(r => r.userId === currentUserId)
+        const newReaction = existingReaction?.emoji === emoji ? null : emoji
+        
+        this.applyReaction(this.selectedMessage, newReaction)
+      }
+      this.showReactionPicker = false
+      this.selectedMessage = null
+      document.removeEventListener('click', this.handleClickOutside)
+    },
+    
+    applyReaction(message, reaction) {
+      // Create floating emoji animation
+      if (reaction) {
+        this.createFloatingEmoji(reaction, this.lastEvent)
+      }
+      
+      // Update local message object immediately for instant feedback
+      if (!message.reactions) {
+        message.reactions = []
+      }
+      
+      const currentUserId = this.currentUserId
+      const currentUser = this.$store?.state?.user
+      const existingReactionIndex = message.reactions.findIndex(
+        r => r.userId === currentUserId
+      )
+      
+      if (reaction) {
+        // Add or update reaction
+        const reactionObj = {
+          userId: currentUserId,
+          userName: currentUser?.displayName || currentUser?.email || 'Bạn',
+          userAvatar: currentUser?.profilePicture || null,
+          emoji: reaction
+        }
+        
+        if (existingReactionIndex !== -1) {
+          // Update existing - Vue 3 auto tracks
+          message.reactions[existingReactionIndex] = reactionObj
+        } else {
+          // Add new
+          message.reactions.push(reactionObj)
+        }
+      } else {
+        // Remove reaction
+        if (existingReactionIndex !== -1) {
+          message.reactions.splice(existingReactionIndex, 1)
+        }
+      }
+      
+      // Call API to save reaction to database
+      MessageAPI.addReaction(message._id, reaction)
+        .then(response => {
+          console.log('Reaction saved:', response.data)
+        })
+        .catch(error => {
+          console.error('Failed to save reaction:', error)
+          // Rollback on error
+          if (reaction) {
+            const idx = message.reactions.findIndex(r => r.userId === currentUserId)
+            if (idx !== -1) message.reactions.splice(idx, 1)
+          }
+        })
+      
+      console.log('Applied reaction:', reaction, 'to message:', message._id)
+      console.log('Reactions after:', message.reactions)
+    },
+    
+    createFloatingEmoji(emoji, clickEvent) {
+      const id = Date.now() + Math.random()
+      const floatingEmoji = {
+        id,
+        emoji,
+        x: clickEvent ? clickEvent.clientX : window.innerWidth / 2,
+        y: clickEvent ? clickEvent.clientY : window.innerHeight / 2
+      }
+      
+      this.floatingEmojis.push(floatingEmoji)
+      
+      // Remove after animation completes
+      setTimeout(() => {
+        const index = this.floatingEmojis.findIndex(e => e.id === id)
+        if (index !== -1) {
+          this.floatingEmojis.splice(index, 1)
+        }
+      }, 1000)
+    },
+    
+    getMessageReactions(message) {
+      if (!message.reactions || message.reactions.length === 0) {
+        return []
+      }
+      
+      // Convert backend format to frontend format if needed
+      return message.reactions.map(r => {
+        // Backend format: { user: {_id, displayName, profilePicture}, emoji }
+        // Frontend format: { userId, userName, userAvatar, emoji }
+        if (r.user && typeof r.user === 'object') {
+          return {
+            userId: r.user._id,
+            userName: r.user.displayName || r.user.email || 'Unknown',
+            userAvatar: r.user.profilePicture || null,
+            emoji: r.emoji
+          }
+        }
+        // Already in frontend format
+        return r
+      })
+    },
+    
+    showMessageReactors(message) {
+      this.selectedMessageForReactors = message
+      this.showReactorsModal = true
     },
 
     handleFileSelect(event) {
@@ -702,6 +1050,7 @@ export default {
 .chat-messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 1rem;
   background: #f8f9fa;
 }
@@ -763,10 +1112,22 @@ export default {
   display: flex;
   align-items: flex-end;
   gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 
 .message-wrapper.own-message {
   flex-direction: row-reverse;
+}
+
+.message-with-reactions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  max-width: 75%;
+}
+
+.message-wrapper.own-message .message-with-reactions {
+  align-items: flex-end;
 }
 
 .message-avatar {
@@ -778,17 +1139,59 @@ export default {
 }
 
 .message-bubble {
-  max-width: 70%;
+  max-width: 100%;
   padding: 0.625rem 0.875rem;
   border-radius: 18px;
   background: white;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
   position: relative;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .message-bubble.own-bubble {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
+}
+
+.message-reaction {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: 2px solid white;
+  animation: popIn 0.3s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.message-reaction:hover {
+  transform: scale(1.2);
+}
+
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0);
+  }
+  50% {
+    transform: scale(1.2);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .message-text {
@@ -875,6 +1278,56 @@ export default {
 .send-btn:hover.active {
   background: #f7fafc;
   transform: scale(1.1);
+}
+
+/* Floating Emoji Animation */
+.floating-emojis {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10001;
+}
+
+.floating-emoji {
+  position: fixed;
+  font-size: 48px;
+  animation: floatUp 1s ease-out forwards;
+  pointer-events: none;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.2));
+}
+
+@keyframes floatUp {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0deg);
+  }
+  50% {
+    transform: translateY(-60px) scale(1.3) rotate(15deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-120px) scale(0.8) rotate(-10deg);
+  }
+}
+
+.float-enter-active {
+  animation: floatUp 1s ease-out;
+}
+
+.float-leave-active {
+  animation: fadeOutFloat 0.3s ease-out;
+}
+
+@keyframes fadeOutFloat {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @media (max-width: 768px) {

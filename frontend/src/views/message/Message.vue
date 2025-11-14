@@ -83,7 +83,11 @@
       <ConversationList 
         :conversations="filteredConversations"
         :activeConversationId="activeConversationId"
-        @select-conversation="selectConversation" 
+        :isLoading="isLoading"
+        :isLoadingMore="isLoadingMore"
+        :hasMore="hasMore"
+        @select-conversation="selectConversation"
+        @load-more="loadMoreConversations"
       />
     </div>
     <div class="message-content">
@@ -91,7 +95,8 @@
         <ChatHeader :conversation="activeConversation" />
         <ChatMessages 
           :messages="messages" 
-          :currentUserId="currentUserId" 
+          :currentUserId="currentUserId"
+          @add-reaction="handleAddReaction" 
         />
         <MessageInput @send-message="sendMessage" />
       </div>
@@ -144,6 +149,10 @@ export default {
       activeConversationId: null,
       searchQuery: '',
       isLoading: false,
+      isLoadingMore: false,
+      hasMore: true,
+      currentPage: 1,
+      pageSize: 20,
       isSidebarCollapsed: false,
       friends: [],
       showNewConversationModal: false,
@@ -243,20 +252,25 @@ export default {
     }
   },
   methods: {
-    async loadConversations() {
-      this.isLoading = true;
+    async loadConversations(page = 1) {
+      console.log(`🔍 [loadConversations] Bắt đầu load page ${page}...`);
+      this.isLoading = page === 1;
+      if (page === 1) {
+        this.currentPage = 1;
+      }
       try {
-        console.log('Loading conversations from API...');
-        const response = await MessageAPI.getConversations();
+        const response = await MessageAPI.getConversations(page, this.pageSize);
+        console.log(`📥 API trả về page ${page}:`, response.data?.length, 'conversations');
+        console.log('📦 Raw API response:', response.data);
         if (response && response.data && Array.isArray(response.data)) {
-          this.conversations = response.data.map(conv => {
-            console.log('Processing conversation:', conv);
+          const mapped = response.data.map((conv, index) => {
+            console.log(`  [${index}] Mapping conversation:`, conv._id, conv.isGroup ? 'GROUP' : '1-1');
             
             // XỬ LÝ GROUP CHAT
             if (conv.isGroup) {
               const lastMessage = conv.lastMessage || {};
               
-              return {
+              const result = {
                 _id: conv._id || '',
                 isGroup: true,
                 groupName: conv.groupName || 'Nhóm chat',
@@ -272,6 +286,8 @@ export default {
                 lastMessageTime: conv.lastMessageTime ? new Date(conv.lastMessageTime) : (conv.createdAt ? new Date(conv.createdAt) : new Date()),
                 unread: conv.unread || 0
               };
+              console.log(`    ✓ Mapped GROUP to:`, result.recipientName, `(${result.participants?.length || 0} members)`, result._id ? '✓' : '✗ NO ID');
+              return result;
             }
             
             // XỬ LÝ 1-1 CHAT
@@ -288,9 +304,7 @@ export default {
             
             const lastMessage = conv.lastMessage || {};
             
-            console.log('Other participant found in loadConversations:', otherParticipant);
-            
-            return {
+            const result = {
               _id: conv._id || '',
               isGroup: false,
               recipientId: otherParticipant._id || null,
@@ -303,14 +317,31 @@ export default {
               lastMessageTime: conv.lastMessageTime ? new Date(conv.lastMessageTime) : (conv.createdAt ? new Date(conv.createdAt) : new Date()),
               unread: conv.unread || 0 // Lấy unread count từ server
             };
+            console.log(`    ✓ Mapped to:`, result.recipientName, result._id ? '✓' : '✗ NO ID');
+            return result;
           });
+          if (page === 1) {
+            this.conversations = mapped;
+            console.log(`✅ Load trang 1: ${mapped.length} conversations`);
+          } else {
+            // Append while avoiding duplicates by _id
+            const existingIds = new Set(this.conversations.map(c => c._id));
+            const toAdd = mapped.filter(m => m && m._id && !existingIds.has(m._id));
+            this.conversations = this.conversations.concat(toAdd);
+            console.log(`✅ Thêm ${toAdd.length} conversations mới. Tổng: ${this.conversations.length}`);
+          }
+          // Simple hasMore detection based on page size
+          this.hasMore = (response.data.length === this.pageSize);
+          console.log(`📊 hasMore = ${this.hasMore} (vì API trả về ${response.data.length}/${this.pageSize})`);
         } else {
           this.conversations = [];
+          this.hasMore = false;
         }
       } catch (error) {
         console.error('Error loading conversations:', error);
         // Fallback to empty conversations if API fails
         this.conversations = [];
+        this.hasMore = false;
         // You could also show a toast notification here
       } finally {
         this.isLoading = false;
@@ -319,20 +350,25 @@ export default {
     async loadMessages(conversationId) {
       this.isLoading = true;
       try {
-        console.log('Loading messages from API for conversation:', conversationId);
         const response = await MessageAPI.getMessages(conversationId);
         if (response && response.data && response.data.messages && Array.isArray(response.data.messages)) {
           this.messages = response.data.messages.map(msg => {
             // Safely access nested properties
             const sender = msg.sender || {};
             
-            console.log('Debug: Processing message', { 
-              msgId: msg._id,
-              senderId: sender._id,
-              currentUserId: this.currentUserId,
-              senderType: typeof sender._id,
-              currentType: typeof this.currentUserId,
-              content: msg.content
+            // Map reactions to frontend format (same as socket listener)
+            const reactions = (msg.reactions || []).map(r => {
+              const user = r.user || {};
+              const userName = user.displayName || 
+                              (user.email ? user.email.split('@')[0] : null) ||
+                              'Unknown User';
+              
+              return {
+                userId: user._id || r.user,
+                userName: userName,
+                userAvatar: user.profilePicture || null,
+                emoji: r.emoji
+              };
             });
             
             return {
@@ -344,7 +380,8 @@ export default {
               messageType: msg.messageType || 'text',
               file: msg.file || null,
               timestamp: msg.createdAt ? new Date(msg.createdAt) : new Date(),
-              isMyMessage: String(sender._id) === String(this.currentUserId) // Thêm flag rõ ràng
+              isMyMessage: String(sender._id) === String(this.currentUserId), // Thêm flag rõ ràng
+              reactions: reactions // Thêm reactions đã map
             };
           });
         } else {
@@ -398,15 +435,107 @@ export default {
         console.error('Error marking messages as read:', error);
       }
     },
+    
+    async loadMoreConversations() {
+      if (this.isLoadingMore || !this.hasMore) {
+        console.log('⏭️ Bỏ qua load more:', { isLoadingMore: this.isLoadingMore, hasMore: this.hasMore });
+        return;
+      }
+      this.isLoadingMore = true;
+      console.log(`🔄 Load more page ${this.currentPage + 1}...`);
+      try {
+        const nextPage = this.currentPage + 1;
+        const response = await MessageAPI.getConversations(nextPage, this.pageSize);
+        console.log(`📥 API trả về page ${nextPage}:`, response.data?.length, 'conversations');
+        if (response && response.data && Array.isArray(response.data)) {
+          const mapped = response.data.map(conv => {
+            if (conv.isGroup) {
+              const lastMessage = conv.lastMessage || {};
+              return {
+                _id: conv._id || '',
+                isGroup: true,
+                groupName: conv.groupName || 'Nhóm chat',
+                groupAvatar: conv.groupAvatar || null,
+                participants: conv.participants || [],
+                recipientId: null,
+                recipientName: conv.groupName || 'Nhóm chat',
+                recipientEmail: '',
+                recipientAvatar: null,
+                recipientLastSeen: null,
+                recipientIsOnline: false,
+                lastMessage: (lastMessage && typeof lastMessage === 'object' && lastMessage.content) ? String(lastMessage.content) : '',
+                lastMessageTime: conv.lastMessageTime ? new Date(conv.lastMessageTime) : (conv.createdAt ? new Date(conv.createdAt) : new Date()),
+                unread: conv.unread || 0
+              };
+            }
+            let otherParticipant = {};
+            if (conv.participant) {
+              otherParticipant = conv.participant;
+            } else if (conv.participants && Array.isArray(conv.participants)) {
+              otherParticipant = conv.participants.find(p => p && p._id && p._id.toString() !== this.currentUserId) || {};
+            }
+            const lastMessage = conv.lastMessage || {};
+            return {
+              _id: conv._id || '',
+              isGroup: false,
+              recipientId: otherParticipant._id || null,
+              recipientName: otherParticipant.displayName || otherParticipant.email || 'Unknown User',
+              recipientEmail: otherParticipant.email || '',
+              recipientAvatar: otherParticipant.profilePicture || null,
+              recipientLastSeen: otherParticipant.lastSeen || null,
+              recipientIsOnline: otherParticipant.isOnline || false,
+              lastMessage: (lastMessage && typeof lastMessage === 'object' && lastMessage.content) ? String(lastMessage.content) : '',
+              lastMessageTime: conv.lastMessageTime ? new Date(conv.lastMessageTime) : (conv.createdAt ? new Date(conv.createdAt) : new Date()),
+              unread: conv.unread || 0
+            };
+          });
+          const existingIds = new Set(this.conversations.map(c => c._id));
+          const toAdd = mapped.filter(m => m && m._id && !existingIds.has(m._id));
+          this.conversations = this.conversations.concat(toAdd);
+          this.currentPage = nextPage;
+          this.hasMore = (response.data.length === this.pageSize);
+        } else {
+          this.hasMore = false;
+        }
+      } catch (error) {
+        console.error('Error loading more conversations:', error);
+      } finally {
+        this.isLoadingMore = false;
+      }
+    },
+    
     searchConversations() {
       // This is handled by the computed property filteredConversations
     },
+    
+    async handleAddReaction({ messageId, reaction }) {
+      try {
+        console.log('👍 [Message.vue] Adding reaction:', { messageId, reaction });
+        
+        // Call API using MessageAPI (same as ChatPopup)
+        const response = await MessageAPI.addReaction(messageId, reaction);
+        console.log('✅ [Message.vue] Reaction saved:', response.data);
+      } catch (error) {
+        console.error('❌ [Message.vue] Add reaction error:', error);
+        
+        // Rollback on error - find message and remove reaction
+        const messageIndex = this.messages.findIndex(m => m._id === messageId);
+        if (messageIndex !== -1 && reaction) {
+          const currentUserId = this.$store.state.user._id;
+          const reactionIndex = this.messages[messageIndex].reactions?.findIndex(
+            r => r.userId === currentUserId
+          );
+          if (reactionIndex !== -1) {
+            this.messages[messageIndex].reactions.splice(reactionIndex, 1);
+          }
+        }
+      }
+    },
+    
     async sendMessage(messageData) {
       if ((!messageData.content && !messageData.file) || !this.activeConversationId) return;
       
       try {
-        console.log('Sending message via API:', messageData);
-        
         // Add message to UI immediately (optimistic update)
         let fileUrl = null;
         if (messageData.file) {
@@ -428,25 +557,10 @@ export default {
           isMyMessage: true // Flag rõ ràng cho tin nhắn của tôi
         };
         
-        console.log('Debug: Temp message created', {
-          tempSenderId: tempMessage.senderId,
-          currentUserId: this.currentUserId,
-          userFromStore: this.$store.state.user?._id,
-          isEqual: tempMessage.senderId === this.currentUserId
-        });
-        
         this.messages.push(tempMessage);
         
         // Send to server
         const response = await MessageAPI.sendMessage(this.activeConversationId, messageData);
-        
-        console.log('🚀 Server response:', {
-          status: response?.status,
-          success: response?.data?.success,
-          data: response?.data,
-          hasFile: !!messageData.file,
-          fileType: messageData.messageType
-        });
         
         // Replace temp message with server response
         const index = this.messages.findIndex(m => m._id === tempMessage._id);
@@ -465,13 +579,6 @@ export default {
             timestamp: responseData.createdAt ? new Date(responseData.createdAt) : new Date(),
             isMyMessage: true // ✅ QUAN TRỌNG: Đánh dấu đây là tin nhắn của tôi
           };
-          
-          console.log('Debug: Final message from server', {
-            finalSenderId: finalMessage.senderId,
-            currentUserId: this.currentUserId,
-            serverSender: sender._id,
-            isEqual: finalMessage.senderId === this.currentUserId
-          });
           
           this.messages.splice(index, 1, finalMessage);
         }
@@ -495,7 +602,6 @@ export default {
 
     async loadFriends() {
       try {
-        console.log('Loading friends from API...');
         const response = await MessageAPI.getFriends();
         this.friends = response.data;
       } catch (error) {
@@ -626,18 +732,50 @@ export default {
       // Connect to WebSocket
       socketService.connect();
       
+    // Listen for reaction updates
+    socketService.onMessageReactionUpdated((data) => {
+      console.log('👍 [Message.vue] Reaction updated:', data);
+      const messageIndex = this.messages.findIndex(m => m._id === data.messageId);
+      if (messageIndex !== -1) {
+        // Map reactions to match frontend format (same as ChatPopup)
+        const updatedReactions = data.reactions.map(r => {
+          const user = r.user || {};
+          const userName = user.displayName || 
+                          (user.email ? user.email.split('@')[0] : null) ||
+                          'Unknown User';
+          
+          return {
+            userId: user._id || r.user,
+            userName: userName,
+            userAvatar: user.profilePicture || null,
+            emoji: r.emoji
+          };
+        });
+        
+        // Update reactions - Vue 3 reactive
+        this.messages[messageIndex].reactions = updatedReactions;
+        
+        console.log('✅ [Message.vue] Reactions updated for message:', this.messages[messageIndex]._id);
+      }
+    });
+      
     // Listen for new messages
     socketService.onNewMessage((messageData) => {
       
       // Add message to current conversation if it matches
       if (messageData.conversationId === this.activeConversationId) {
         // Kiểm tra xem tin nhắn có phải từ người khác không
-        const isFromOtherUser = String(messageData.sender?._id || messageData.senderId) !== String(this.currentUserId);
+        const messageSenderId = String(messageData.sender?._id || messageData.senderId);
+        const myUserId = String(this.currentUserId);
+        const isFromOtherUser = messageSenderId !== myUserId;
         
         if (isFromOtherUser) {
-          
-
-          
+          // Bỏ qua các thông điệp rỗng (không có text, không có file/media)
+          const hasText = typeof messageData.content === 'string' && messageData.content.trim().length > 0;
+          const hasMedia = !!messageData.file || messageData.messageType === 'image' || messageData.messageType === 'file';
+          if (!(hasText || hasMedia)) {
+            return; // không hiển thị bong bóng trống
+          }
           // ✅ Chỉ thêm tin nhắn từ người khác và chuẩn hóa format
           const messageWithFlag = {
             _id: messageData._id,
@@ -650,7 +788,6 @@ export default {
             timestamp: messageData.createdAt ? new Date(messageData.createdAt) : new Date(),
             isMyMessage: false
           };
-          
           
           this.messages.push(messageWithFlag);
           this.scrollToBottom();
@@ -935,11 +1072,14 @@ export default {
 
 .message-sidebar {
   width: 350px;
+  height: 100vh;
+  max-height: 100vh;
   border-right: 1px solid rgba(226, 232, 240, 0.6);
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
   background: white;
+  overflow: hidden;
 }
 
 .message-header {

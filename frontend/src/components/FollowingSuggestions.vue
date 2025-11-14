@@ -57,14 +57,22 @@
             
             <div class="user-info">
               <h4 class="user-name">{{ user.displayName || user.email }}</h4>
-              <span class="user-badge" :class="{ 'following': user.isFollowing }">
-                {{ user.isFollowing ? 'Đang theo dõi' : 'Gợi ý' }}
+              <span class="user-badge" :class="{ 'following': user.isFollowing, 'requested': user.requestSent }">
+                {{ user.isFollowing ? 'Đang theo dõi' : (user.requestSent ? 'Đã gửi yêu cầu' : 'Gợi ý') }}
               </span>
             </div>
           </div>
           
           <button 
-            v-if="!user.isFollowing" 
+            v-if="user.requestSent" 
+            class="requested-btn"
+            disabled
+          >
+            <i class="material-icons">schedule</i>
+            <span>Đã gửi yêu cầu</span>
+          </button>
+          <button 
+            v-else-if="!user.isFollowing" 
             class="follow-btn"
             @click.stop="followUser(user._id)"
             :disabled="user.isFollowLoading"
@@ -80,9 +88,11 @@
     </div>
 
     <div v-else-if="loading" class="suggestions-loading">
-      <div class="loading-card" v-for="i in 4" :key="i">
-        <Skeletor circle size="50" />
-        <Skeletor width="70" height="12" style="margin-top: 8px;" />
+      <div class="loading-card" v-for="i in 5" :key="i">
+        <Skeletor circle width="54" height="54" />
+        <Skeletor width="80" height="14" style="margin-top: 12px;" />
+        <Skeletor width="60" height="10" style="margin-top: 8px; border-radius: 10px;" />
+        <Skeletor width="100%" height="32" style="margin-top: 10px; border-radius: 8px;" />
       </div>
     </div>
 
@@ -185,7 +195,8 @@ export default {
         const users = (response.data || []).map(user => ({
           ...user,
           isFollowing: false,
-          isFollowLoading: false
+          isFollowLoading: false,
+          requestSent: false // Thêm trạng thái requestSent
         }));
         
         // Shuffle và chỉ lấy 10 người
@@ -216,25 +227,35 @@ export default {
         const userIndex = this.allUsers.findIndex(u => u._id === userId);
         if (userIndex === -1) return;
         
-        // Hiển thị loading ngay lập tức (Vue 3 way)
+        // Hiển thị loading ngay lập tức
         this.allUsers[userIndex].isFollowLoading = true;
         
-        // Gọi API follow
+        // Gọi API follow (sử dụng endpoint từ profile)
         const response = await followUserApi(userId, currentUserId);
         
         if (response.status === 200) {
-          // Cập nhật UI ngay lập tức - chuyển sang trạng thái đã follow
-          this.allUsers[userIndex].isFollowing = true;
+          const data = response.data;
+          
+          // Kiểm tra response để xác định trạng thái
+          if (data.isPrivate && data.requestSent) {
+            // Tài khoản private - đã gửi yêu cầu
+            this.allUsers[userIndex].requestSent = true;
+            this.allUsers[userIndex].isFollowing = false;
+            console.log('✉️ Đã gửi yêu cầu theo dõi!');
+          } else {
+            // Tài khoản public - follow thành công
+            this.allUsers[userIndex].isFollowing = true;
+            this.allUsers[userIndex].requestSent = false;
+            console.log('✅ Đã follow thành công!');
+            
+            // Cập nhật store
+            await this.$store.dispatch('updateUserFollowing', {
+              action: 'follow',
+              targetUserId: userId
+            });
+          }
+          
           this.allUsers[userIndex].isFollowLoading = false;
-          
-          // Hiển thị thông báo thành công
-          console.log('Đã follow thành công!');
-          
-          // Cập nhật store bằng action có sẵn
-          await this.$store.dispatch('updateUserFollowing', {
-            action: 'follow',
-            targetUserId: userId
-          });
         }
       } catch (error) {
         console.error('Follow user error:', error);
@@ -476,6 +497,11 @@ export default {
   background: rgba(102, 126, 234, 0.1);
 }
 
+.user-badge.requested {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+}
+
 .follow-btn {
   width: 100%;
   height: 32px;
@@ -530,13 +556,35 @@ export default {
   font-size: 14px;
 }
 
+.requested-btn {
+  width: 100%;
+  height: 32px;
+  margin-top: 0.625rem;
+  border-radius: 8px;
+  border: 1px solid #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+  cursor: not-allowed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.requested-btn i {
+  font-size: 14px;
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
 
 .suggestions-loading {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
   gap: 0.75rem;
   padding: 0.5rem 0;
 }
@@ -545,7 +593,10 @@ export default {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-width: 100px;
+  padding: 0.875rem;
+  border-radius: 0.875rem;
+  background: white;
+  border: 1px solid rgba(226, 232, 240, 0.6);
 }
 
 .suggestions-empty {

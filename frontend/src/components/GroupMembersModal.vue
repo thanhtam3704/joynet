@@ -14,8 +14,8 @@
             <span>Nhóm đã đạt giới hạn tối đa 200 thành viên</span>
           </div>
 
-          <!-- Add Member Section (Only for admins and group not full) -->
-          <div v-if="isAdmin && members.length < 200" class="add-member-section">
+          <!-- Add Member Section (All members can add, not just admins) -->
+          <div v-if="members.length < 200" class="add-member-section">
             <button class="btn-add-member" @click="showAddMemberUI = !showAddMemberUI">
               <i class="material-icons">person_add</i>
               <span>Thêm thành viên ({{ members.length }}/200)</span>
@@ -55,6 +55,46 @@
             </div>
           </div>
 
+          <!-- Group Management (Only for Creator) -->
+          <div v-if="isGroupCreator" class="group-management-section">
+            <h3 class="section-title">Quản lý nhóm</h3>
+            
+            <!-- Transfer Ownership -->
+            <button class="btn-management transfer" @click="showTransferOwnershipUI = !showTransferOwnershipUI">
+              <i class="material-icons">swap_horiz</i>
+              <span>Chuyển quyền trưởng nhóm</span>
+            </button>
+
+            <!-- Transfer Ownership UI -->
+            <div v-if="showTransferOwnershipUI" class="transfer-ownership-ui">
+              <p class="hint-text">Chọn thành viên để chuyển quyền trưởng nhóm:</p>
+              <div class="members-select-list">
+                <div 
+                  v-for="member in eligibleForOwnership" 
+                  :key="member._id"
+                  class="member-select-item"
+                  @click="confirmTransferOwnership(member)"
+                >
+                  <img 
+                    :src="member.profilePicture ? `http://localhost:3000/uploads/user/${member.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                    :alt="member.displayName"
+                  />
+                  <div class="member-select-info">
+                    <span class="member-select-name">{{ member.displayName || member.email }}</span>
+                    <span v-if="isMemberAdmin(member._id)" class="mini-badge">⭐ Admin</span>
+                  </div>
+                  <i class="material-icons select-icon">chevron_right</i>
+                </div>
+              </div>
+            </div>
+
+            <!-- Disband Group -->
+            <button class="btn-management disband" @click="confirmDisbandGroup">
+              <i class="material-icons">delete_forever</i>
+              <span>Giải tán nhóm</span>
+            </button>
+          </div>
+
           <!-- Members List -->
           <div class="members-list">
             <div 
@@ -77,7 +117,7 @@
                 <span class="member-email">{{ member.email }}</span>
               </div>
 
-              <!-- Actions (Only for admins, can't remove creator) -->
+              <!-- Actions for OTHER members (admin can remove, creator can promote) -->
               <div v-if="isAdmin && !isCreator(member._id) && member._id !== currentUserId" class="member-actions">
                 <!-- Promote button (only group creator can promote) -->
                 <button 
@@ -89,7 +129,7 @@
                   <i class="material-icons">star</i>
                 </button>
                 
-                <!-- Remove button -->
+                <!-- Remove button - Visible for all admins -->
                 <button 
                   class="action-btn remove-btn"
                   @click="confirmRemoveMember(member)"
@@ -100,7 +140,7 @@
               </div>
 
               <!-- Leave button for current user (not creator) -->
-              <div v-else-if="!isCreator(member._id) && member._id === currentUserId" class="member-actions">
+              <div v-else-if="member._id === currentUserId && !isCreator(member._id)" class="member-actions">
                 <button 
                   class="action-btn leave-btn"
                   @click="confirmLeaveGroup"
@@ -138,6 +178,32 @@
         </div>
       </div>
     </div>
+
+    <!-- Confirm Transfer Ownership Modal -->
+    <div v-if="memberToTransfer" class="confirm-overlay" @click.self="memberToTransfer = null">
+      <div class="confirm-box">
+        <h3>⚠️ Chuyển quyền trưởng nhóm</h3>
+        <p>Bạn có chắc muốn chuyển quyền trưởng nhóm cho <strong>{{ memberToTransfer.displayName }}</strong>?</p>
+        <p class="warning-text">Sau khi chuyển, bạn sẽ không còn là trưởng nhóm nữa!</p>
+        <div class="confirm-actions">
+          <button class="btn-cancel" @click="memberToTransfer = null">Hủy</button>
+          <button class="btn-confirm" @click="transferOwnership">Xác nhận</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm Disband Group Modal -->
+    <div v-if="showDisbandConfirm" class="confirm-overlay" @click.self="showDisbandConfirm = false">
+      <div class="confirm-box danger">
+        <h3>🚨 Giải tán nhóm</h3>
+        <p>Bạn có chắc muốn <strong>GIẢI TÁN</strong> nhóm này?</p>
+        <p class="danger-text">Hành động này không thể hoàn tác! Tất cả thành viên sẽ bị xóa khỏi nhóm.</p>
+        <div class="confirm-actions">
+          <button class="btn-cancel" @click="showDisbandConfirm = false">Hủy</button>
+          <button class="btn-danger" @click="disbandGroup">Giải tán nhóm</button>
+        </div>
+      </div>
+    </div>
   </teleport>
 </template>
 
@@ -163,7 +229,10 @@ export default {
       searchQuery: '',
       availableFriends: [],
       memberToRemove: null,
-      showLeaveConfirm: false
+      showLeaveConfirm: false,
+      showTransferOwnershipUI: false,
+      memberToTransfer: null,
+      showDisbandConfirm: false
     };
   },
   computed: {
@@ -176,7 +245,12 @@ export default {
     },
     isAdmin() {
       // Trưởng nhóm hoặc có trong danh sách admins
-      return this.isGroupCreator || this.conversation.admins?.includes(this.currentUserId);
+      const isCreator = this.isGroupCreator;
+      const isInAdmins = this.conversation.admins?.some(admin => 
+        (admin._id || admin) === this.currentUserId
+      );
+      console.log('🔍 isAdmin check:', { isCreator, isInAdmins, currentUserId: this.currentUserId, admins: this.conversation.admins });
+      return isCreator || isInAdmins;
     },
     filteredAvailableFriends() {
       if (!this.searchQuery.trim()) {
@@ -188,6 +262,10 @@ export default {
         const email = (friend.email || '').toLowerCase();
         return name.includes(query) || email.includes(query);
       });
+    },
+    eligibleForOwnership() {
+      // Tất cả thành viên trừ creator
+      return this.members.filter(m => !this.isCreator(m._id));
     }
   },
   methods: {
@@ -306,6 +384,48 @@ export default {
         }
       } catch (error) {
         console.error('Leave group error:', error);
+      }
+    },
+
+    confirmTransferOwnership(member) {
+      this.memberToTransfer = member;
+    },
+
+    async transferOwnership() {
+      if (!this.memberToTransfer) return;
+
+      try {
+        const response = await GroupMessageAPI.transferOwnership(
+          this.conversation._id,
+          this.memberToTransfer._id
+        );
+        if (response.status === 200) {
+          this.$emit('ownership-transferred', response.data.conversation);
+          this.memberToTransfer = null;
+          this.showTransferOwnershipUI = false;
+          await this.refreshConversation();
+        }
+      } catch (error) {
+        console.error('Transfer ownership error:', error);
+        alert('Lỗi khi chuyển quyền: ' + (error.response?.data?.error || error.message));
+      }
+    },
+
+    confirmDisbandGroup() {
+      this.showDisbandConfirm = true;
+    },
+
+    async disbandGroup() {
+      try {
+        const response = await GroupMessageAPI.disbandGroup(this.conversation._id);
+        if (response.status === 200) {
+          this.$emit('group-disbanded');
+          this.showDisbandConfirm = false;
+          this.closeModal();
+        }
+      } catch (error) {
+        console.error('Disband group error:', error);
+        alert('Lỗi khi giải tán nhóm: ' + (error.response?.data?.error || error.message));
       }
     },
 
@@ -748,4 +868,157 @@ export default {
   transform: translateY(-2px);
   box-shadow: 0 8px 20px rgba(255, 48, 64, 0.4);
 }
+
+/* Group Management Section */
+.group-management-section {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--gray-200);
+}
+
+.group-management-section .section-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--gray-600);
+  margin-bottom: 0.75rem;
+}
+
+.btn-management {
+  width: 100%;
+  padding: 0.75rem;
+  margin-bottom: 0.625rem;
+  border: 2px solid;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.btn-management.transfer {
+  background: transparent;
+  color: #3498db;
+  border-color: #3498db;
+}
+
+.btn-management.transfer:hover {
+  background: #3498db;
+  color: white;
+}
+
+.btn-management.disband {
+  background: transparent;
+  color: #e74c3c;
+  border-color: #e74c3c;
+}
+
+.btn-management.disband:hover {
+  background: #e74c3c;
+  color: white;
+}
+
+/* Transfer Ownership UI */
+.transfer-ownership-ui {
+  margin-top: 0.625rem;
+  padding: 1rem;
+  background: var(--gray-50);
+  border-radius: var(--radius-lg);
+}
+
+.transfer-ownership-ui .hint-text {
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+  margin-bottom: 0.625rem;
+}
+
+.members-select-list {
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.member-select-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem;
+  background: white;
+  border-radius: var(--radius-lg);
+  margin-bottom: 0.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.member-select-item:hover {
+  background: #e8f4f8;
+  transform: translateX(5px);
+}
+
+.member-select-item img {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
+}
+
+.member-select-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.member-select-name {
+  font-weight: 600;
+  color: var(--gray-900);
+  font-size: 0.875rem;
+}
+
+.mini-badge {
+  font-size: 0.6875rem;
+  color: #f39c12;
+  margin-top: 0.125rem;
+}
+
+.select-icon {
+  color: var(--gray-400);
+  font-size: 1.25rem;
+}
+
+/* Confirm boxes improvements */
+.confirm-box.danger {
+  border: 3px solid #e74c3c;
+}
+
+.warning-text {
+  font-size: 0.8125rem;
+  color: #f39c12;
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+.danger-text {
+  font-size: 0.8125rem;
+  color: #e74c3c;
+  margin-top: 0.5rem;
+  font-weight: 600;
+}
+
+.btn-danger {
+  background: #e74c3c;
+  color: white;
+  padding: 0.625rem 1.25rem;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-danger:hover {
+  background: #c0392b;
+  transform: scale(1.05);
+}
 </style>
+

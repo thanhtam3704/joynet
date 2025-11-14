@@ -2,7 +2,7 @@
   <div>
     <div v-if="isVisible" class="messages-dropdown" @click.stop>
       <div class="messages-header">
-        <h3>Tin nhắn ({{ conversations.length }})</h3>
+        <h3>Tin nhắn ({{ filteredConversations.length }})</h3>
           <div class="messages-actions">
             <i class="material-icons action-icon" @click="showCreateGroupModal = true" title="Tạo nhóm chat">
               group_add
@@ -15,6 +15,34 @@
             </i>
           </div>
         </div>
+
+      <!-- Tab Bar -->
+      <div class="tab-bar">
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'all' }"
+          @click="switchTab('all')"
+        >
+          <i class="material-icons">forum</i>
+          <span>Tất cả</span>
+        </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'unread' }"
+          @click="switchTab('unread')"
+        >
+          <i class="material-icons">mark_chat_unread</i>
+          <span>Chưa đọc</span>
+        </button>
+        <button 
+          class="tab-btn" 
+          :class="{ active: activeTab === 'groups' }"
+          @click="switchTab('groups')"
+        >
+          <i class="material-icons">groups</i>
+          <span>Nhóm</span>
+        </button>
+      </div>
 
       <div class="messages-search">
         <i class="material-icons search-icon">search</i>
@@ -132,6 +160,7 @@ export default {
   },
   data() {
     return {
+      activeTab: 'all', // 'all', 'unread', 'groups'
       searchQuery: '',
       loading: false,
       showNewMessageModal: false,
@@ -143,17 +172,28 @@ export default {
       return this.$store.getters.sortedConversations || []
     },
     filteredConversations() {
-      if (!this.searchQuery || this.searchQuery.trim() === '') {
-        return this.conversations
+      let result = this.conversations;
+      
+      // Filter by tab
+      if (this.activeTab === 'unread') {
+        result = result.filter(conv => conv.unread > 0);
+      } else if (this.activeTab === 'groups') {
+        result = result.filter(conv => conv.isGroup);
       }
       
-      const query = this.searchQuery.toLowerCase().trim()
-      return this.conversations.filter(conv => {
-        const otherUser = this.getOtherUser(conv)
-        const userName = (otherUser?.displayName || otherUser?.email || '').toLowerCase()
-        const lastMessagePreview = this.getLastMessagePreview(conv).toLowerCase()
-        return userName.includes(query) || lastMessagePreview.includes(query)
-      })
+      // Filter by search query
+      if (this.searchQuery && this.searchQuery.trim() !== '') {
+        const query = this.searchQuery.toLowerCase().trim();
+        result = result.filter(conv => {
+          const otherUser = this.getOtherUser(conv);
+          const userName = (otherUser?.displayName || otherUser?.email || '').toLowerCase();
+          const groupName = (conv.groupName || '').toLowerCase();
+          const lastMessagePreview = this.getLastMessagePreview(conv).toLowerCase();
+          return userName.includes(query) || groupName.includes(query) || lastMessagePreview.includes(query);
+        });
+      }
+      
+      return result;
     }
   },
   watch: {
@@ -165,6 +205,10 @@ export default {
     }
   },
   methods: {
+    switchTab(tab) {
+      this.activeTab = tab;
+    },
+    
     async loadConversations() {
       console.log('🔄 Loading conversations in MessagesDropdown...');
       this.loading = true
@@ -349,6 +393,57 @@ export default {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   transform: scale(1.05);
+}
+
+/* Tab Bar */
+.tab-bar {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: rgba(243, 244, 246, 0.5);
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.tab-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  padding: 0.5rem 0.375rem;
+  border: none;
+  background: transparent;
+  border-radius: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #6b7280;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.tab-btn i {
+  font-size: 16px;
+  flex-shrink: 0;
+}
+
+.tab-btn span {
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  background: rgba(255, 255, 255, 0.6);
+  color: #374151;
+}
+
+.tab-btn.active {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.tab-btn.active:hover {
+  background: linear-gradient(135deg, #5a67d8 0%, #6b3fa0 100%);
 }
 
 .messages-search {

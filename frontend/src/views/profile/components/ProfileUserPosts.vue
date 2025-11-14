@@ -1,11 +1,24 @@
 <template>
   <div class="profile-posts">
     <!-- Loading skeletons -->
-    <div v-if="isSkeletorLoading">
-      <Skeletor circle size="50" class="skeletor" />
-      <Skeletor class="skeletor" width="100%" height="20" />
-      <Skeletor class="skeletor" width="100%" height="300" />
-    </div>
+    <template v-if="isSkeletorLoading">
+      <div class="post-skeleton" v-for="i in 2" :key="'skeleton-' + i">
+        <div class="skeleton-header">
+          <Skeletor circle width="50" height="50" />
+          <div class="skeleton-header-text">
+            <Skeletor width="150" height="16" />
+            <Skeletor width="100" height="12" style="margin-top: 6px;" />
+          </div>
+        </div>
+        <Skeletor width="100%" height="80" style="margin-top: 12px; border-radius: 8px;" />
+        <Skeletor width="100%" height="300" style="margin-top: 12px; border-radius: 12px;" />
+        <div class="skeleton-actions">
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+          <Skeletor width="80" height="36" style="border-radius: 8px;" />
+        </div>
+      </div>
+    </template>
 
     <!-- Private account message -->
     <div v-else-if="shouldHidePosts" class="private-message">
@@ -33,6 +46,14 @@
               @edit-post="openEditModal"
               @delete-post="handleDeletePost"
             />
+          </div>
+          <div class="privacy-indicator" v-if="post.privacy === 'private'">
+            <span class="material-icons">lock</span>
+            <span class="privacy-text">Chỉ mình tôi</span>
+          </div>
+          <div class="privacy-indicator privacy-public" v-else-if="post.privacy === 'public'">
+            <span class="material-icons">public</span>
+            <span class="privacy-text">Công khai</span>
           </div>
           <div class="post-desc" @click="goToPostDetail(post._id)" style="cursor: pointer;">
             <p
@@ -320,7 +341,8 @@ export default {
         // Đảm bảo loadUser hoàn thành trước
         await this.$store.dispatch("loadUser");
         const { getUserPosts, getReactionStatus } = await import('@/api/posts');
-        const responsePosts = await getUserPosts(this.id, 1, 6);
+        const currentUserId = this.$store.state.user?._id;
+        const responsePosts = await getUserPosts(this.id, 1, 6, currentUserId);
         if (responsePosts.status === 200) {
           const data = responsePosts.data;
           let posts = data.posts || [];
@@ -329,7 +351,6 @@ export default {
           console.log('Posts data:', posts);
           
           // Enrich posts with reaction data
-          const currentUserId = this.$store.state.user?._id;
           if (currentUserId && posts.length > 0) {
             posts = await Promise.all(
               posts.map(async (p) => {
@@ -369,7 +390,6 @@ export default {
         }
 
         //is current user - kiểm tra an toàn
-        const currentUserId = this.$store.state.user?._id;
         if (currentUserId && this.id === currentUserId) {
           this.currentUser = true;
         } else {
@@ -387,7 +407,8 @@ export default {
       this.loadingMore = true;
       try {
         const { getUserPosts } = await import('@/api/posts');
-        const responsePosts = await getUserPosts(this.id, this.currentPage + 1, 6);
+        const currentUserId = this.$store.state.user?._id;
+        const responsePosts = await getUserPosts(this.id, this.currentPage + 1, 6, currentUserId);
         if (responsePosts.status === 200) {
           const data = responsePosts.data;
           const newPosts = data.posts || [];
@@ -440,6 +461,7 @@ export default {
         const postData = {
           description: updatedPost.description,
           file: updatedPost.file,
+          privacy: updatedPost.privacy,
           userId: currentUserId
         };
         
@@ -563,6 +585,63 @@ export default {
 .post__image-wrapper { margin-top:.5rem; }
 .post__image { width:95%; max-height:350px; object-fit:cover; border-radius:7px; display:block; }
 .skeletor { margin-top:1rem; }
+
+.post-skeleton {
+  background: white;
+  border-radius: 1rem;
+  padding: 1.25rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.skeleton-header {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.skeleton-header-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.skeleton-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(226, 232, 240, 0.6);
+}
+
+.privacy-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: rgba(107, 114, 128, 0.08);
+  border-radius: 14px;
+  font-size: 0.8125rem;
+  color: var(--gray-600);
+  margin: 0.25rem 0 0.25rem 0;
+  border: 1px solid rgba(107, 114, 128, 0.12);
+  width: fit-content;
+  max-width: max-content;
+}
+
+.privacy-indicator.privacy-public {
+  background: rgba(102, 126, 234, 0.08);
+  border-color: rgba(102, 126, 234, 0.12);
+  color: var(--primary);
+}
+
+.privacy-indicator .material-icons {
+  font-size: 0.9375rem;
+}
+
+.privacy-text {
+  font-weight: 500;
+}
 
 .private-message {
   display: flex;

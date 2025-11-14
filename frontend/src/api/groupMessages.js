@@ -52,6 +52,23 @@ const GroupMessageAPI = {
       {},
       { headers: { token } }
     );
+  },
+
+  // Chuyển quyền trưởng nhóm
+  async transferOwnership(conversationId, newOwnerId) {
+    const token = localStorage.getItem('token');
+    return axios.post(`/messages/groups/${conversationId}/transfer-ownership`,
+      { newOwnerId },
+      { headers: { token } }
+    );
+  },
+
+  // Giải tán nhóm
+  async disbandGroup(conversationId) {
+    const token = localStorage.getItem('token');
+    return axios.delete(`/messages/groups/${conversationId}/disband`,
+      { headers: { token } }
+    );
   }
 };
 
