@@ -84,7 +84,7 @@
               <span class="conversation-time" :class="{ 'unread': conversation && conversation.unread > 0 }">{{ conversation && conversation.lastMessageTime ? formatTime(conversation.lastMessageTime) : '' }}</span>
             </div>
             <div class="conversation-message" :class="{ 'unread': conversation && conversation.unread > 0 }">
-              {{ conversation && conversation.lastMessage ? truncateMessage(conversation.lastMessage) : 'Bạn đã gửi một ảnh' }}
+              {{ getLastMessagePreview(conversation) }}
             </div>
           </div>
         </div>
@@ -234,7 +234,35 @@ export default {
     },
     truncateMessage(message) {
       if (!message) return '';
+      if (typeof message !== 'string') return '';
       return message.length > 30 ? message.substring(0, 30) + '...' : message;
+    },
+
+    getLastMessagePreview(conversation) {
+      if (!conversation) return '';
+      const message = conversation.lastMessage;
+      if (!message) return '';
+
+      // Old format: string
+      if (typeof message === 'string') {
+        return this.truncateMessage(message);
+      }
+
+      // New format: object
+      if (message.messageType === 'image') {
+        return '📷 Đã gửi một ảnh';
+      }
+
+      if (message.messageType === 'file') {
+        const fileName = message.originalFileName || message.fileName || message.file || '';
+        return fileName ? `📎 ${fileName}` : '📎 Đã gửi một file';
+      }
+
+      if (message.content) {
+        return message.content.length > 30 ? message.content.substring(0, 30) + '...' : message.content;
+      }
+
+      return '';
     },
     
     handleScroll(event) {

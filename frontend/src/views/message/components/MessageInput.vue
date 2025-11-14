@@ -4,10 +4,20 @@
       type="file" 
       ref="fileInput" 
       @change="onFileSelect"
-      accept="image/*,.pdf,.doc,.docx,.txt"
+      accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx"
+      style="display: none"
+    />
+    <input 
+      type="file" 
+      ref="imageInput" 
+      @change="onImageSelect"
+      accept="image/*"
       style="display: none"
     />
     <button class="message-action-btn" @click="$refs.fileInput.click()">
+      <i class="material-icons">attach_file</i>
+    </button>
+    <button class="message-action-btn" @click="$refs.imageInput.click()">
       <i class="material-icons">add_photo_alternate</i>
     </button>
     
@@ -39,6 +49,52 @@
         @keydown.enter.prevent="onEnterPress"
         @input="adjustHeight"
       ></textarea>
+      <button class="emoji-btn" @click.stop="toggleEmojiPicker" type="button">
+        <i class="material-icons">sentiment_satisfied_alt</i>
+      </button>
+    </div>
+    
+    <!-- Emoji Picker Modal -->
+    <div v-if="showEmojiPicker" class="emoji-picker-overlay" @click="closeEmojiPicker">
+      <div class="emoji-picker-container" @click.stop>
+        <div class="emoji-picker-search">
+          <i class="material-icons">search</i>
+          <input 
+            v-model="emojiSearch" 
+            type="text" 
+            placeholder="Tìm kiếm biểu tượng cảm xúc"
+            @input="filterEmojis"
+          />
+        </div>
+        
+        <div class="emoji-categories">
+          <button 
+            v-for="cat in categories" 
+            :key="cat.id"
+            :class="['category-btn', { active: activeCategory === cat.id }]"
+            @click="selectCategory(cat.id)"
+            :title="cat.name"
+          >
+            {{ cat.icon }}
+          </button>
+        </div>
+        
+        <div class="emoji-category-title">
+          {{ getCurrentCategoryName() }}
+        </div>
+        
+        <div class="emoji-grid-container">
+          <button 
+            v-for="emoji in filteredEmojis" 
+            :key="emoji" 
+            @click="insertEmoji(emoji)"
+            class="emoji-item"
+            type="button"
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </div>
     </div>
     <button 
       class="message-send-btn" 
@@ -57,7 +113,30 @@ export default {
     return {
       message: '',
       selectedFile: null,
-      maxHeight: 120 // Max height in pixels
+      maxHeight: 120, // Max height in pixels
+      showEmojiPicker: false,
+      emojiSearch: '',
+      activeCategory: 'smileys',
+      categories: [
+        { id: 'smileys', name: 'Mặt cười và hình người', icon: '😀' },
+        { id: 'animals', name: 'Động vật và thiên nhiên', icon: '🐻' },
+        { id: 'food', name: 'Đồ ăn và đồ uống', icon: '🍔' },
+        { id: 'activities', name: 'Hoạt động', icon: '⚽' },
+        { id: 'travel', name: 'Du lịch và địa điểm', icon: '🚗' },
+        { id: 'objects', name: 'Đồ vật', icon: '💡' },
+        { id: 'symbols', name: 'Biểu tượng', icon: '❤️' },
+        { id: 'flags', name: 'Cờ', icon: '🏳️' }
+      ],
+      emojiData: {
+        smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😶\u200d🌫️', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'],
+        animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕\u200d🦺', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔'],
+        food: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🥝', '🍅', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🌰', '🍞', '🥐', '🥖', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🦀', '🦞', '🦐', '🦑', '🦪', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🥤', '🧃', '🧉', '🧊'],
+        activities: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️', '🤾', '🏌️', '🏇', '🧘', '🏊', '🤽', '🚣', '🧗', '🚴', '🚵', '🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩'],
+        travel: ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🕍', '🛕', '🕋'],
+        objects: ['⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💸', '💵', '💴', '💶', '💷', '💰', '💳', '💎', '⚖️', '🧰', '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🔩', '⚙️', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪', '🌡️', '🧹', '🧺', '🧻', '🚽', '🚰', '🚿', '🛁', '🛀', '🧼', '🪒', '🧽', '🧴', '🛎️', '🔑', '🗝️', '🚪', '🪑', '🛋️', '🛏️', '🛌', '🧸', '🖼️', '🛍️', '🛒', '🎁', '🎈', '🎏', '🎀', '🎊', '🎉', '🎎', '🏮', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌', '📥', '📤', '📦', '🏷️', '📪', '📫', '📬', '📭', '📮', '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️', '🗓️', '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁', '📂', '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏', '🧮', '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝', '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓'],
+        symbols: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚹', '🚺', '🚼', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔸', '🔹', '🔶', '🔷', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔈', '🔇', '🔉', '🔊', '🔔', '🔕', '📣', '📢', '👁️\u200d🗨️', '💬', '💭', '🗯️', '♠️', '♣️', '♥️', '♦️', '🃏', '🎴', '🀄', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕜', '🕝', '🕞', '🕟', '🕠', '🕡', '🕢', '🕣', '🕤', '🕥', '🕦', '🕧'],
+        flags: ['🏳️', '🏴', '🏴\u200d☠️', '🏁', '🚩', '🏳️\u200d🌈', '🏳️\u200d⚧️', '🇻🇳', '🇺🇸', '🇬🇧', '🇫🇷', '🇩🇪', '🇯🇵', '🇰🇷', '🇨🇳', '🇮🇹', '🇪🇸', '🇷🇺', '🇧🇷', '🇦🇺', '🇨🇦', '🇮🇳', '🇲🇽', '🇮🇩', '🇹🇭', '🇸🇬', '🇲🇾', '🇵🇭']
+      }
     };
   },
   computed: {
@@ -90,7 +169,19 @@ export default {
       if (file) {
         // Check file size (max 10MB)
         if (file.size > 10 * 1024 * 1024) {
-          alert('File quá lớn. Vui lòng chọn file nhỏ hơn 10MB.');
+          this.$emit('show-error', 'File quá lớn. Vui lòng chọn file nhỏ hơn 10MB.');
+          return;
+        }
+        this.selectedFile = file;
+      }
+    },
+    
+    onImageSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        // Check file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+          this.$emit('show-error', 'File quá lớn. Vui lòng chọn file nhỏ hơn 10MB.');
           return;
         }
         this.selectedFile = file;
@@ -100,6 +191,7 @@ export default {
     clearFile() {
       this.selectedFile = null;
       this.$refs.fileInput.value = '';
+      this.$refs.imageInput.value = '';
     },
     
     getFileIcon() {
@@ -145,6 +237,71 @@ export default {
       
       // Add scrollbar if content exceeds maxHeight
       textarea.style.overflowY = textarea.scrollHeight > this.maxHeight ? 'auto' : 'hidden';
+    },
+    
+    toggleEmojiPicker() {
+      this.showEmojiPicker = !this.showEmojiPicker;
+      if (!this.showEmojiPicker) {
+        this.emojiSearch = '';
+      }
+    },
+    
+    closeEmojiPicker() {
+      this.showEmojiPicker = false;
+      this.emojiSearch = '';
+    },
+    
+    insertEmoji(emoji) {
+      const textarea = this.$refs.messageInput;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      
+      this.message = this.message.substring(0, start) + emoji + this.message.substring(end);
+      
+      this.$nextTick(() => {
+        textarea.focus();
+        const newPos = start + emoji.length;
+        textarea.setSelectionRange(newPos, newPos);
+        this.adjustHeight();
+      });
+    },
+    
+    selectCategory(categoryId) {
+      this.activeCategory = categoryId;
+      this.emojiSearch = '';
+    },
+    
+    filterEmojis() {
+      // Search functionality can be enhanced
+    },
+    
+    getCurrentCategoryName() {
+      const category = this.categories.find(c => c.id === this.activeCategory);
+      return category ? category.name : '';
+    }
+  },
+  
+  computed: {
+    filteredEmojis() {
+      const search = this.emojiSearch.trim().toLowerCase();
+      
+      if (!search) {
+        // No search, return current category
+        return this.emojiData[this.activeCategory] || [];
+      }
+      
+      // Search by category name
+      const matchedCategories = this.categories.filter(cat => 
+        cat.name.toLowerCase().includes(search)
+      );
+      
+      if (matchedCategories.length > 0) {
+        // Return emojis from all matched categories
+        return matchedCategories.flatMap(cat => this.emojiData[cat.id] || []);
+      }
+      
+      // If no category match, return current category
+      return this.emojiData[this.activeCategory] || [];
     }
   },
   mounted() {
@@ -207,15 +364,45 @@ export default {
 
 .message-input-wrapper {
   flex: 1;
+  position: relative;
   background: white;
   border-radius: 24px;
-  padding: 0.625rem 1rem;
+  padding: 0.625rem 3rem 0.625rem 1rem;
   border: 2px solid rgba(226, 232, 240, 0.6);
   transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
   
   &:focus-within {
     border-color: #667eea;
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  }
+}
+
+.emoji-btn {
+  position: absolute;
+  right: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #667eea;
+  cursor: pointer;
+  padding: 0.4rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  z-index: 1;
+  
+  &:hover {
+    background: rgba(102, 126, 234, 0.1);
+    transform: translateY(-50%) scale(1.1);
+  }
+  
+  i {
+    font-size: 22px;
   }
 }
 
@@ -231,6 +418,7 @@ export default {
   overflow-y: hidden;
   color: #1e293b;
   font-family: inherit;
+  padding: 0;
   
   &::placeholder {
     color: #94a3b8;
@@ -374,6 +562,182 @@ export default {
   to {
     opacity: 1;
     transform: scale(1);
+  }
+}
+
+/* Emoji Picker Modal */
+.emoji-picker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99999;
+  background: transparent;
+}
+
+.emoji-picker-container {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  width: 350px;
+  max-height: 450px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeInUp 0.2s ease;
+}
+
+.emoji-picker-search {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 8px;
+  
+  i {
+    color: #9ca3af;
+    font-size: 20px;
+  }
+  
+  input {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-size: 14px;
+    color: #1f2937;
+    
+    &::placeholder {
+      color: #9ca3af;
+    }
+  }
+}
+
+.emoji-categories {
+  display: flex;
+  padding: 8px 12px;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+  
+  &::-webkit-scrollbar {
+    height: 4px;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 2px;
+  }
+}
+
+.category-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  
+  &:hover {
+    background: #f3f4f6;
+  }
+  
+  &.active {
+    background: rgba(102, 126, 234, 0.1);
+  }
+}
+
+.emoji-category-title {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.emoji-grid-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  align-content: start;
+  
+  &::-webkit-scrollbar {
+    width: 8px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background: #f3f4f6;
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background: #d1d5db;
+    border-radius: 4px;
+    
+    &:hover {
+      background: #9ca3af;
+    }
+  }
+}
+
+.emoji-item {
+  background: none;
+  border: none;
+  font-size: 28px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  
+  &:hover {
+    background: #f3f4f6;
+    transform: scale(1.2);
+  }
+  
+  &:active {
+    transform: scale(1.1);
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .emoji-picker-overlay {
+    padding-bottom: 70px;
+  }
+  
+  .emoji-picker-container {
+    width: 320px;
+    max-height: 400px;
+  }
+  
+  .emoji-grid-container {
+    grid-template-columns: repeat(7, 1fr);
+  }
+  
+  .emoji-item {
+    font-size: 24px;
   }
 }
 

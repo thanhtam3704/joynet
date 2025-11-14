@@ -206,6 +206,14 @@ class SocketService {
     }
   }
 
+  // Add generic on() method for any socket event
+  on(event, callback) {
+    if (this.socket) {
+      console.log(`🎧 [SocketService] Setting up ${event} listener`);
+      this.socket.on(event, callback);
+    }
+  }
+
   // Clean up all listeners
   removeAllListeners() {
     if (this.socket) {

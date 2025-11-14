@@ -178,6 +178,19 @@ module.exports = (io) => {
     });
   };
 
+  // Emit messages read event
+  io.emitMessagesRead = (conversationId, readerId, messages) => {
+    console.log(`👁️ [SocketHandler] Emitting messages read to conversation_${conversationId}:`, {
+      readerId,
+      messageCount: messages.length
+    });
+    io.to(`conversation_${conversationId}`).emit('messagesRead', {
+      conversationId,
+      readerId,
+      messages
+    });
+  };
+
   // GROUP CHAT SOCKET EVENTS
 
   // Emit group created event

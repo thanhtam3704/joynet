@@ -108,7 +108,15 @@
           >
             <ProfileImage :id="comment.userId" class="comment-avatar" />
             <div class="comment__content">
-              <PostDisplayName :id="comment.userId" />
+              <div class="comment__header">
+                <div class="comment__user-info">
+                  <PostDisplayName :id="comment.userId" />
+                  <span class="comment__time">{{ formatCommentTime(comment.createdAt) }}</span>
+                </div>
+                <div class="comment__actions" v-if="canEditComment(comment)">
+                  <i class="material-icons comment__menu-icon" @click.stop="openCommentMenu(comment, $event)">more_horiz</i>
+                </div>
+              </div>
               <p class="text-post__content" v-if="comment.comment">
                 {{ comment.comment }}
               </p>
@@ -131,6 +139,59 @@
         </div>
         <div v-else class="no-comments">
           Chưa có bình luận nào. Hãy là người đầu tiên bình luận!
+        </div>
+      </div>
+    </div>
+    
+    <!-- Comment Context Menu -->
+    <div 
+      v-if="showCommentMenu" 
+      class="comment-context-menu"
+      :style="{ top: commentMenuPosition.y + 'px', left: commentMenuPosition.x + 'px' }"
+      @click.stop
+    >
+      <div class="menu-item" @click="editComment">
+        <i class="material-icons">edit</i>
+        <span>Sửa</span>
+      </div>
+      <div class="menu-item delete" @click="confirmDeleteComment">
+        <i class="material-icons">delete</i>
+        <span>Xóa</span>
+      </div>
+    </div>
+
+    <!-- Edit Comment Modal -->
+    <div v-if="showEditCommentModal" class="edit-modal-overlay" @click="cancelEditComment">
+      <div class="edit-modal" @click.stop>
+        <div class="edit-modal-header">
+          <h3>Sửa bình luận</h3>
+          <button @click="cancelEditComment" class="close-btn">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        <div class="edit-modal-body">
+          <textarea 
+            v-model="editingCommentContent"
+            placeholder="Nhập nội dung bình luận..."
+            ref="editCommentTextarea"
+            @keydown.enter.ctrl="saveEditComment"
+          ></textarea>
+        </div>
+        <div class="edit-modal-footer">
+          <button @click="cancelEditComment" class="btn-cancel">Hủy</button>
+          <button @click="saveEditComment" class="btn-save" :disabled="!editingCommentContent.trim()">Lưu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Comment Confirmation Modal -->
+    <div v-if="showDeleteCommentModal" class="edit-modal-overlay" @click.self="showDeleteCommentModal = false">
+      <div class="edit-modal delete-confirm-modal" @click.stop>
+        <h3>Xóa bình luận</h3>
+        <p>Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.</p>
+        <div class="modal-actions">
+          <button @click="showDeleteCommentModal = false" class="btn-cancel">Hủy</button>
+          <button @click="deleteComment" class="btn-delete">Xóa bình luận</button>
         </div>
       </div>
     </div>
@@ -239,6 +300,14 @@ export default {
       hasMoreComments: true,
       loadingMoreComments: false,
       commentsObserver: null,
+      // Comment edit/delete
+      showCommentMenu: false,
+      commentMenuPosition: { x: 0, y: 0 },
+      contextComment: null,
+      showEditCommentModal: false,
+      showDeleteCommentModal: false,
+      editingCommentContent: '',
+      editingCommentId: null,
     };
   },
   async created() {
@@ -589,6 +658,168 @@ export default {
     },
     formatFullDateTime(timestamp) {
       return formatDateTime(timestamp, true);
+    },
+    
+    // Comment management methods
+    formatCommentTime(timestamp) {
+      const now = new Date();
+      const commentTime = new Date(timestamp);
+      const diffInSeconds = Math.floor((now - commentTime) / 1000);
+
+      if (diffInSeconds < 60) {
+        return 'Vừa xong';
+      }
+      
+      const diffInMinutes = Math.floor(diffInSeconds / 60);
+      if (diffInMinutes < 60) {
+        return `${diffInMinutes} phút`;
+      }
+      
+      const diffInHours = Math.floor(diffInMinutes / 60);
+      if (diffInHours < 24) {
+        return `${diffInHours} giờ`;
+      }
+      
+      const diffInDays = Math.floor(diffInHours / 24);
+      if (diffInDays === 1) {
+        return 'Hôm qua';
+      }
+      if (diffInDays < 7) {
+        return `${diffInDays} ngày`;
+      }
+      
+      const diffInWeeks = Math.floor(diffInDays / 7);
+      if (diffInWeeks < 4) {
+        return `${diffInWeeks} tuần`;
+      }
+      
+      const diffInMonths = Math.floor(diffInDays / 30);
+      if (diffInMonths < 12) {
+        return `${diffInMonths} tháng`;
+      }
+      
+      const diffInYears = Math.floor(diffInDays / 365);
+      return `${diffInYears} năm`;
+    },
+    
+    canEditComment(comment) {
+      return comment.userId === this.user._id;
+    },
+    
+    openCommentMenu(comment, event) {
+      event.stopPropagation();
+      this.contextComment = comment;
+      
+      // Position menu near the click
+      const rect = event.target.getBoundingClientRect();
+      this.commentMenuPosition = {
+        x: rect.left - 150, // Menu width is ~160px, position to the left of icon
+        y: rect.bottom + 5
+      };
+      
+      this.showCommentMenu = true;
+      
+      // Close menu when clicking outside
+      this.$nextTick(() => {
+        const closeMenu = (e) => {
+          if (!e.target.closest('.comment-context-menu') && !e.target.closest('.comment__menu-icon')) {
+            this.showCommentMenu = false;
+            document.removeEventListener('click', closeMenu);
+          }
+        };
+        document.addEventListener('click', closeMenu);
+      });
+    },
+    
+    editComment() {
+      if (!this.contextComment) return;
+      
+      this.editingCommentId = this.contextComment._id;
+      this.editingCommentContent = this.contextComment.comment || '';
+      this.showCommentMenu = false;
+      this.showEditCommentModal = true;
+      
+      // Focus textarea after modal opens
+      this.$nextTick(() => {
+        const textarea = this.$refs.editCommentTextarea;
+        if (textarea) {
+          textarea.focus();
+          // Move cursor to end
+          textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        }
+      });
+    },
+    
+    cancelEditComment() {
+      this.showEditCommentModal = false;
+      this.editingCommentContent = '';
+      this.editingCommentId = null;
+      this.contextComment = null;
+    },
+    
+    async saveEditComment() {
+      if (!this.editingCommentId || !this.editingCommentContent.trim()) {
+        return;
+      }
+      
+      try {
+        const { editComment } = await import('@/api/posts');
+        const response = await editComment(
+          this.posts._id,
+          this.editingCommentId,
+          this.editingCommentContent,
+          this.user._id
+        );
+        
+        if (response.status === 200) {
+          // Update local comment
+          const commentIndex = this.comments.findIndex(c => c._id === this.editingCommentId);
+          if (commentIndex !== -1) {
+            this.comments[commentIndex].comment = this.editingCommentContent;
+          }
+          
+          // Also update in allComments if exists
+          const allCommentIndex = this.allComments.findIndex(c => c._id === this.editingCommentId);
+          if (allCommentIndex !== -1) {
+            this.allComments[allCommentIndex].comment = this.editingCommentContent;
+          }
+          
+          this.cancelEditComment();
+        }
+      } catch (error) {
+        console.error('Error updating comment:', error);
+        alert('Không thể cập nhật bình luận. Vui lòng thử lại.');
+      }
+    },
+    
+    confirmDeleteComment() {
+      this.showCommentMenu = false;
+      this.showDeleteCommentModal = true;
+    },
+    
+    async deleteComment() {
+      if (!this.contextComment) return;
+      
+      try {
+        const { deleteComment } = await import('@/api/posts');
+        const response = await deleteComment(
+          this.posts._id,
+          this.contextComment._id,
+          this.user._id
+        );
+        
+        if (response.status === 200) {
+          // Remove from local comments array
+          this.comments = this.comments.filter(c => c._id !== this.contextComment._id);
+          this.allComments = this.allComments.filter(c => c._id !== this.contextComment._id);
+          
+          this.showDeleteCommentModal = false;
+          this.contextComment = null;
+        }
+      } catch (error) {
+        console.error('Error deleting comment:', error);
+        alert('Không thể xóa bình luận. Vui lòng thử lại.');
+      }
     },
   },
 };
@@ -1529,6 +1760,350 @@ export default {
 @media (max-width: 360px) {
   .post-time {
     font-size: 0.7rem;
+  }
+}
+
+/* Comment header with time and actions */
+.comment__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.25rem;
+  width: 100%;
+}
+
+.comment__user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.comment__time {
+  color: #65676b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.comment__actions {
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.comment:hover .comment__actions {
+  opacity: 1;
+}
+
+.comment__menu-icon {
+  font-size: 18px !important;
+  color: #65676b;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.comment__menu-icon:hover {
+  background-color: rgba(0, 0, 0, 0.05);
+  color: #1f2937;
+}
+
+/* Comment context menu */
+.comment-context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem 0;
+  z-index: 1000;
+  min-width: 160px;
+  animation: slideDown 0.15s ease;
+}
+
+.comment-context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  font-size: 0.9375rem;
+  font-weight: 500;
+}
+
+.comment-context-menu .menu-item:hover {
+  background-color: rgba(102, 126, 234, 0.08);
+}
+
+.comment-context-menu .menu-item.delete {
+  color: #dc2626;
+}
+
+.comment-context-menu .menu-item.delete:hover {
+  background-color: rgba(220, 38, 38, 0.08);
+}
+
+.comment-context-menu .menu-item i {
+  font-size: 18px;
+}
+
+/* Edit comment modal - Facebook style */
+.edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  animation: fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 1rem;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.edit-modal {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: hidden;
+  animation: modalSlideIn 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  flex-direction: column;
+}
+
+.edit-modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.03) 0%, rgba(118, 75, 162, 0.03) 100%);
+  position: relative;
+}
+
+.edit-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1c1e21;
+  text-align: center;
+  letter-spacing: -0.02em;
+}
+
+.edit-modal-body {
+  padding: 1.5rem;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.edit-modal-body textarea {
+  width: 100%;
+  min-height: 140px;
+  padding: 1rem;
+  border: 2px solid #e4e6eb;
+  border-radius: 12px;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  line-height: 1.5;
+  resize: vertical;
+  transition: all 0.2s ease;
+  background: #f8f9fa;
+  color: #1c1e21;
+}
+
+.edit-modal-body textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  background: white;
+  box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+}
+
+.edit-modal-body textarea::placeholder {
+  color: #8a8d91;
+}
+
+.edit-modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.1);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: #f8f9fa;
+}
+
+.btn-cancel,
+.btn-save,
+.btn-delete {
+  padding: 0.75rem 1.75rem;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border: none;
+  letter-spacing: 0.01em;
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-cancel {
+  background: #e4e6eb;
+  color: #050505;
+}
+
+.btn-cancel:hover {
+  background: #d8dadf;
+  transform: translateY(-1px);
+}
+
+.btn-cancel:active {
+  transform: translateY(0);
+}
+
+.btn-save {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-save:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+}
+
+.btn-save:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.btn-save:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-delete {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+.btn-delete:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(220, 38, 38, 0.4);
+}
+
+.btn-delete:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+}
+
+/* Delete confirmation modal - Facebook style */
+.delete-confirm-modal {
+  padding: 2rem 2.5rem;
+  text-align: center;
+  max-width: 420px;
+}
+
+.delete-confirm-modal h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.375rem;
+  font-weight: 700;
+  color: #1c1e21;
+  letter-spacing: -0.02em;
+}
+
+.delete-confirm-modal p {
+  margin: 0 0 2rem 0;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #65676b;
+}
+
+.delete-confirm-modal .modal-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.delete-confirm-modal button {
+  min-width: 120px;
+}
+
+/* Responsive modal styles */
+@media (max-width: 640px) {
+  .edit-modal {
+    max-width: 95%;
+    margin: 0 1rem;
+  }
+
+  .edit-modal-header h3 {
+    font-size: 1.125rem;
+  }
+
+  .edit-modal-body {
+    padding: 1.25rem;
+  }
+
+  .edit-modal-body textarea {
+    min-height: 120px;
+    font-size: 0.875rem;
+  }
+
+  .edit-modal-footer {
+    padding: 0.875rem 1.25rem;
+  }
+
+  .btn-cancel,
+  .btn-save,
+  .btn-delete {
+    padding: 0.625rem 1.25rem;
+    font-size: 0.875rem;
+  }
+
+  .delete-confirm-modal {
+    padding: 1.5rem 1.75rem;
+    max-width: 95%;
+  }
+
+  .delete-confirm-modal h3 {
+    font-size: 1.125rem;
+  }
+
+  .delete-confirm-modal p {
+    font-size: 0.9375rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .delete-confirm-modal .modal-actions {
+    flex-direction: column;
+  }
+
+  .delete-confirm-modal button {
+    width: 100%;
   }
 }
 </style>

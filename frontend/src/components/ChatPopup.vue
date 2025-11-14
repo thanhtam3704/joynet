@@ -108,12 +108,22 @@
                 @touchstart="startLongPress($event, message)"
                 @touchend="cancelLongPress"
               >
+                <!-- More Options Button -->
+                <button 
+                  v-if="isOwnMessage(message)" 
+                  class="message-more-btn"
+                  @click.stop.prevent="showContextMenu($event, message)"
+                >
+                  <i class="material-icons">more_horiz</i>
+                </button>
+
                 <div v-if="message.messageType === 'image'" class="message-image">
                   <img :src="`http://localhost:3000/uploads/${message.file}`" alt="Image" />
                 </div>
-                <div v-else-if="message.messageType === 'file'" class="message-file">
+                <div v-else-if="message.messageType === 'file'" class="message-file" @click="downloadFile(message)">
                   <i class="material-icons">attach_file</i>
-                  <span>{{ message.file }}</span>
+                  <span>{{ message.originalFileName || message.file }}</span>
+                  <i class="material-icons download-icon">download</i>
                 </div>
                 <p v-else class="message-text">{{ message.content }}</p>
                 <span class="message-time">{{ formatTime(message.createdAt) }}</span>
@@ -132,12 +142,25 @@
       </div>
 
       <div class="chat-input">
-        <div class="input-actions">
-          <!-- <i class="material-icons action-icon" @click="triggerFileInput">attach_file</i> -->
-          <i class="material-icons action-icon" @click="triggerImageInput">image</i>
+        <div class="plus-menu-wrapper">
+          <i class="material-icons plus-icon" @click.stop="toggleAttachMenu">add_circle</i>
+          
+          <!-- Attach Menu -->
+          <div v-if="showAttachMenu" class="attach-menu" @click.stop>
+            <div class="attach-menu-item" @click="triggerImageInput">
+              <i class="material-icons">image</i>
+              <span>Ảnh</span>
+            </div>
+            <div class="attach-menu-item" @click="triggerFileInput">
+              <i class="material-icons">attach_file</i>
+              <span>File</span>
+            </div>
+          </div>
+          
           <input 
             type="file" 
             ref="fileInput" 
+            accept=".pdf,.doc,.docx,.txt,.xls,.xlsx,.ppt,.pptx"
             style="display: none" 
             @change="handleFileSelect"
           />
@@ -149,16 +172,63 @@
             @change="handleImageSelect"
           />
         </div>
+        
         <input 
           type="text" 
           v-model="messageInput" 
           placeholder="Aa"
           @keydown.enter="sendMessage"
           class="message-input"
+          ref="chatInput"
         />
-        <i class="material-icons send-btn" @click="sendMessage" :class="{ 'active': messageInput.trim() }">
+        
+        <i class="material-icons emoji-icon" @click.stop="toggleEmojiPicker">sentiment_satisfied_alt</i>
+        <i class="material-icons send-icon" @click="sendMessage" :class="{ 'active': messageInput.trim() }">
           send
         </i>
+      </div>
+    </div>
+    
+    <!-- Emoji Picker Modal -->
+    <div v-if="showEmojiPicker" class="emoji-picker-overlay" @click="closeEmojiPicker">
+      <div class="emoji-picker-container" @click.stop>
+        <div class="emoji-picker-search">
+          <i class="material-icons">search</i>
+          <input 
+            v-model="emojiSearch" 
+            type="text" 
+            placeholder="Tìm kiếm biểu tượng cảm xúc"
+            @input="filterEmojis"
+          />
+        </div>
+        
+        <div class="emoji-categories">
+          <button 
+            v-for="cat in categories" 
+            :key="cat.id"
+            :class="['category-btn', { active: activeCategory === cat.id }]"
+            @click="selectCategory(cat.id)"
+            :title="cat.name"
+          >
+            {{ cat.icon }}
+          </button>
+        </div>
+        
+        <div class="emoji-category-title">
+          {{ getCurrentCategoryName() }}
+        </div>
+        
+        <div class="emoji-grid-container">
+          <button 
+            v-for="emoji in filteredEmojis" 
+            :key="emoji" 
+            @click="insertEmoji(emoji)"
+            class="emoji-item"
+            type="button"
+          >
+            {{ emoji }}
+          </button>
+        </div>
       </div>
     </div>
     
@@ -189,6 +259,66 @@
       :reactions="selectedMessageForReactors ? getMessageReactions(selectedMessageForReactors) : []"
       @close="showReactorsModal = false"
     />
+
+    <!-- Context Menu -->
+    <div 
+      v-if="showMessageMenu" 
+      class="message-context-menu"
+      :style="{ top: menuPosition.y + 'px', left: menuPosition.x + 'px' }"
+      @click.stop
+    >
+      <div class="menu-item" @click="editMessage" v-if="canEdit(contextMessage)">
+        <i class="material-icons">edit</i>
+        <span>Sửa</span>
+      </div>
+      <div class="menu-item delete" @click="confirmDelete">
+        <i class="material-icons">delete</i>
+        <span>Xóa</span>
+      </div>
+    </div>
+
+    <!-- Edit Message Modal -->
+    <div v-if="showEditModal" class="edit-modal-overlay" @click="cancelEdit">
+      <div class="edit-modal" @click.stop>
+        <div class="edit-modal-header">
+          <h3>Sửa tin nhắn</h3>
+          <button @click="cancelEdit" class="close-btn">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        <div class="edit-modal-body">
+          <textarea 
+            v-model="editingContent"
+            placeholder="Nhập nội dung tin nhắn..."
+            ref="editTextarea"
+            @keydown.enter.ctrl="saveEdit"
+          ></textarea>
+        </div>
+        <div class="edit-modal-footer">
+          <button @click="cancelEdit" class="btn-cancel">Hủy</button>
+          <button @click="saveEdit" class="btn-save" :disabled="!editingContent.trim()">Lưu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="edit-modal-overlay" @click="showDeleteModal = false">
+      <div class="edit-modal delete-confirm-modal" @click.stop>
+        <div class="edit-modal-header">
+          <h3>Xác nhận xóa</h3>
+          <button @click="showDeleteModal = false" class="close-btn">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        <div class="edit-modal-body">
+          <p>Bạn có chắc muốn xóa tin nhắn này?</p>
+        </div>
+        <div class="edit-modal-footer">
+          <button @click="showDeleteModal = false" class="btn-cancel">Hủy</button>
+          <button @click="deleteMessage" class="btn-delete">Xóa</button>
+        </div>
+      </div>
+    </div>
     
     <!-- Group Members Modal -->
     <teleport to="body">
@@ -250,7 +380,38 @@ export default {
       floatingEmojis: [],
       lastEvent: null,
       showReactorsModal: false,
-      selectedMessageForReactors: null
+      selectedMessageForReactors: null,
+      showMessageMenu: false,
+      menuPosition: { x: 0, y: 0 },
+      contextMessage: null,
+      showEditModal: false,
+      showDeleteModal: false,
+      editingContent: '',
+      editingMessageId: null,
+      showEmojiPicker: false,
+      showAttachMenu: false,
+      emojiSearch: '',
+      activeCategory: 'smileys',
+      categories: [
+        { id: 'smileys', name: 'Mặt cười và hình người', icon: '😀' },
+        { id: 'animals', name: 'Động vật và thiên nhiên', icon: '🐻' },
+        { id: 'food', name: 'Đồ ăn và đồ uống', icon: '🍔' },
+        { id: 'activities', name: 'Hoạt động', icon: '⚽' },
+        { id: 'travel', name: 'Du lịch và địa điểm', icon: '🚗' },
+        { id: 'objects', name: 'Đồ vật', icon: '💡' },
+        { id: 'symbols', name: 'Biểu tượng', icon: '❤️' },
+        { id: 'flags', name: 'Cờ', icon: '🏳️' }
+      ],
+      emojiData: {
+        smileys: ['😀', '😃', '😄', '😁', '😆', '😅', '🤣', '😂', '🙂', '🙃', '😉', '😊', '😇', '🥰', '😍', '🤩', '😘', '😗', '😚', '😙', '😋', '😛', '😜', '🤪', '😝', '🤑', '🤗', '🤭', '🤫', '🤔', '🤐', '🤨', '😐', '😑', '😶', '😏', '😒', '🙄', '😬', '🤥', '😌', '😔', '😪', '🤤', '😴', '😷', '🤒', '🤕', '🤢', '🤮', '🤧', '🥵', '🥶', '😶\u200d🌫️', '🥴', '😵', '🤯', '🤠', '🥳', '😎', '🤓', '🧐', '😕', '😟', '🙁', '☹️', '😮', '😯', '😲', '😳', '🥺', '😦', '😧', '😨', '😰', '😥', '😢', '😭', '😱', '😖', '😣', '😞', '😓', '😩', '😫', '🥱', '😤', '😡', '😠', '🤬', '😈', '👿', '💀', '☠️', '💩', '🤡', '👹', '👺', '👻', '👽', '👾', '🤖', '😺', '😸', '😹', '😻', '😼', '😽', '🙀', '😿', '😾'],
+        animals: ['🐶', '🐱', '🐭', '🐹', '🐰', '🦊', '🐻', '🐼', '🐨', '🐯', '🦁', '🐮', '🐷', '🐽', '🐸', '🐵', '🙈', '🙉', '🙊', '🐒', '🐔', '🐧', '🐦', '🐤', '🐣', '🐥', '🦆', '🦅', '🦉', '🦇', '🐺', '🐗', '🐴', '🦄', '🐝', '🐛', '🦋', '🐌', '🐞', '🐜', '🦟', '🦗', '🕷️', '🦂', '🐢', '🐍', '🦎', '🦖', '🦕', '🐙', '🦑', '🦐', '🦞', '🦀', '🐡', '🐠', '🐟', '🐬', '🐳', '🐋', '🦈', '🐊', '🐅', '🐆', '🦓', '🦍', '🦧', '🐘', '🦛', '🦏', '🐪', '🐫', '🦒', '🦘', '🐃', '🐂', '🐄', '🐎', '🐖', '🐏', '🐑', '🦙', '🐐', '🦌', '🐕', '🐩', '🦮', '🐕\u200d🦺', '🐈', '🐓', '🦃', '🦚', '🦜', '🦢', '🦩', '🕊️', '🐇', '🦝', '🦨', '🦡', '🦦', '🦥', '🐁', '🐀', '🐿️', '🦔'],
+        food: ['🍇', '🍈', '🍉', '🍊', '🍋', '🍌', '🍍', '🥭', '🍎', '🍏', '🍐', '🍑', '🍒', '🍓', '🥝', '🍅', '🥥', '🥑', '🍆', '🥔', '🥕', '🌽', '🌶️', '🥒', '🥬', '🥦', '🧄', '🧅', '🍄', '🥜', '🌰', '🍞', '🥐', '🥖', '🥨', '🥯', '🥞', '🧇', '🧀', '🍖', '🍗', '🥩', '🥓', '🍔', '🍟', '🍕', '🌭', '🥪', '🌮', '🌯', '🥙', '🧆', '🥚', '🍳', '🥘', '🍲', '🥣', '🥗', '🍿', '🧈', '🧂', '🥫', '🍱', '🍘', '🍙', '🍚', '🍛', '🍜', '🍝', '🍠', '🍢', '🍣', '🍤', '🍥', '🥮', '🍡', '🥟', '🥠', '🥡', '🦀', '🦞', '🦐', '🦑', '🦪', '🍦', '🍧', '🍨', '🍩', '🍪', '🎂', '🍰', '🧁', '🥧', '🍫', '🍬', '🍭', '🍮', '🍯', '🍼', '🥛', '☕', '🍵', '🍶', '🍾', '🍷', '🍸', '🍹', '🍺', '🍻', '🥂', '🥃', '🥤', '🧃', '🧉', '🧊'],
+        activities: ['⚽', '🏀', '🏈', '⚾', '🥎', '🎾', '🏐', '🏉', '🥏', '🎱', '🪀', '🏓', '🏸', '🏒', '🏑', '🥍', '🏏', '🥅', '⛳', '🪁', '🏹', '🎣', '🤿', '🥊', '🥋', '🎽', '🛹', '🛼', '🛷', '⛸️', '🥌', '🎿', '⛷️', '🏂', '🪂', '🏋️', '🤼', '🤸', '🤺', '⛹️', '🤾', '🏌️', '🏇', '🧘', '🏊', '🤽', '🚣', '🧗', '🚴', '🚵', '🎪', '🎭', '🎨', '🎬', '🎤', '🎧', '🎼', '🎹', '🥁', '🎷', '🎺', '🎸', '🪕', '🎻', '🎲', '♟️', '🎯', '🎳', '🎮', '🎰', '🧩'],
+        travel: ['🚗', '🚕', '🚙', '🚌', '🚎', '🏎️', '🚓', '🚑', '🚒', '🚐', '🚚', '🚛', '🚜', '🦯', '🦽', '🦼', '🛴', '🚲', '🛵', '🏍️', '🛺', '🚨', '🚔', '🚍', '🚘', '🚖', '🚡', '🚠', '🚟', '🚃', '🚋', '🚞', '🚝', '🚄', '🚅', '🚈', '🚂', '🚆', '🚇', '🚊', '🚉', '✈️', '🛫', '🛬', '🛩️', '💺', '🛰️', '🚀', '🛸', '🚁', '🛶', '⛵', '🚤', '🛥️', '🛳️', '⛴️', '🚢', '⚓', '⛽', '🚧', '🚦', '🚥', '🚏', '🗺️', '🗿', '🗽', '🗼', '🏰', '🏯', '🏟️', '🎡', '🎢', '🎠', '⛲', '⛱️', '🏖️', '🏝️', '🏜️', '🌋', '⛰️', '🏔️', '🗻', '🏕️', '⛺', '🏠', '🏡', '🏘️', '🏚️', '🏗️', '🏭', '🏢', '🏬', '🏣', '🏤', '🏥', '🏦', '🏨', '🏪', '🏫', '🏩', '💒', '🏛️', '⛪', '🕌', '🕍', '🛕', '🕋'],
+        objects: ['⌚', '📱', '📲', '💻', '⌨️', '🖥️', '🖨️', '🖱️', '🖲️', '🕹️', '🗜️', '💾', '💿', '📀', '📼', '📷', '📸', '📹', '🎥', '📽️', '🎞️', '📞', '☎️', '📟', '📠', '📺', '📻', '🎙️', '🎚️', '🎛️', '🧭', '⏱️', '⏲️', '⏰', '🕰️', '⌛', '⏳', '📡', '🔋', '🔌', '💡', '🔦', '🕯️', '🪔', '🧯', '🛢️', '💸', '💵', '💴', '💶', '💷', '💰', '💳', '💎', '⚖️', '🧰', '🔧', '🔨', '⚒️', '🛠️', '⛏️', '🔩', '⚙️', '🧱', '⛓️', '🧲', '🔫', '💣', '🧨', '🪓', '🔪', '🗡️', '⚔️', '🛡️', '🚬', '⚰️', '⚱️', '🏺', '🔮', '📿', '🧿', '💈', '⚗️', '🔭', '🔬', '🕳️', '🩹', '🩺', '💊', '💉', '🩸', '🧬', '🦠', '🧫', '🧪', '🌡️', '🧹', '🧺', '🧻', '🚽', '🚰', '🚿', '🛁', '🛀', '🧼', '🪒', '🧽', '🧴', '🛎️', '🔑', '🗝️', '🚪', '🪑', '🛋️', '🛏️', '🛌', '🧸', '🖼️', '🛍️', '🛒', '🎁', '🎈', '🎏', '🎀', '🎊', '🎉', '🎎', '🏮', '🎐', '🧧', '✉️', '📩', '📨', '📧', '💌', '📥', '📤', '📦', '🏷️', '📪', '📫', '📬', '📭', '📮', '📯', '📜', '📃', '📄', '📑', '🧾', '📊', '📈', '📉', '🗒️', '🗓️', '📆', '📅', '🗑️', '📇', '🗃️', '🗳️', '🗄️', '📋', '📁', '📂', '🗂️', '🗞️', '📰', '📓', '📔', '📒', '📕', '📗', '📘', '📙', '📚', '📖', '🔖', '🧷', '🔗', '📎', '🖇️', '📐', '📏', '🧮', '📌', '📍', '✂️', '🖊️', '🖋️', '✒️', '🖌️', '🖍️', '📝', '✏️', '🔍', '🔎', '🔏', '🔐', '🔒', '🔓'],
+        symbols: ['❤️', '🧡', '💛', '💚', '💙', '💜', '🖤', '🤍', '🤎', '💔', '❣️', '💕', '💞', '💓', '💗', '💖', '💘', '💝', '💟', '☮️', '✝️', '☪️', '🕉️', '☸️', '✡️', '🔯', '🕎', '☯️', '☦️', '🛐', '⛎', '♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓', '🆔', '⚛️', '🉑', '☢️', '☣️', '📴', '📳', '🈶', '🈚', '🈸', '🈺', '🈷️', '✴️', '🆚', '💮', '🉐', '㊙️', '㊗️', '🈴', '🈵', '🈹', '🈲', '🅰️', '🅱️', '🆎', '🆑', '🅾️', '🆘', '❌', '⭕', '🛑', '⛔', '📛', '🚫', '💯', '💢', '♨️', '🚷', '🚯', '🚳', '🚱', '🔞', '📵', '🚭', '❗', '❕', '❓', '❔', '‼️', '⁉️', '🔅', '🔆', '〽️', '⚠️', '🚸', '🔱', '⚜️', '🔰', '♻️', '✅', '🈯', '💹', '❇️', '✳️', '❎', '🌐', '💠', 'Ⓜ️', '🌀', '💤', '🏧', '🚾', '♿', '🅿️', '🈳', '🈂️', '🛂', '🛃', '🛄', '🛅', '🚹', '🚺', '🚼', '🚻', '🚮', '🎦', '📶', '🈁', '🔣', 'ℹ️', '🔤', '🔡', '🔠', '🆖', '🆗', '🆙', '🆒', '🆕', '🆓', '0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟', '🔢', '#️⃣', '*️⃣', '⏏️', '▶️', '⏸️', '⏯️', '⏹️', '⏺️', '⏭️', '⏮️', '⏩', '⏪', '⏫', '⏬', '◀️', '🔼', '🔽', '➡️', '⬅️', '⬆️', '⬇️', '↗️', '↘️', '↙️', '↖️', '↕️', '↔️', '↪️', '↩️', '⤴️', '⤵️', '🔀', '🔁', '🔂', '🔄', '🔃', '🎵', '🎶', '➕', '➖', '➗', '✖️', '♾️', '💲', '💱', '™️', '©️', '®️', '〰️', '➰', '➿', '🔚', '🔙', '🔛', '🔝', '🔜', '✔️', '☑️', '🔘', '🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '⚫', '⚪', '🟤', '🔺', '🔻', '🔸', '🔹', '🔶', '🔷', '🔳', '🔲', '▪️', '▫️', '◾', '◽', '◼️', '◻️', '🟥', '🟧', '🟨', '🟩', '🟦', '🟪', '⬛', '⬜', '🟫', '🔈', '🔇', '🔉', '🔊', '🔔', '🔕', '📣', '📢', '👁️\u200d🗨️', '💬', '💭', '🗯️', '♠️', '♣️', '♥️', '♦️', '🃏', '🎴', '🀄', '🕐', '🕑', '🕒', '🕓', '🕔', '🕕', '🕖', '🕗', '🕘', '🕙', '🕚', '🕛', '🕜', '🕝', '🕞', '🕟', '🕠', '🕡', '🕢', '🕣', '🕤', '🕥', '🕦', '🕧'],
+        flags: ['🏳️', '🏴', '🏴\u200d☠️', '🏁', '🚩', '🏳️\u200d🌈', '🏳️\u200d⚧️', '🇻🇳', '🇺🇸', '🇬🇧', '🇫🇷', '🇩🇪', '🇯🇵', '🇰🇷', '🇨🇳', '🇮🇹', '🇪🇸', '🇷🇺', '🇧🇷', '🇦🇺', '🇨🇦', '🇮🇳', '🇲🇽', '🇮🇩', '🇹🇭', '🇸🇬', '🇲🇾', '🇵🇭']
+      }
     }
   },
   watch: {
@@ -300,6 +461,9 @@ export default {
         this.scrollToBottom()
       }, 1500)
     })
+    
+    // Close menus on click outside
+    document.addEventListener('click', this.handleClickOutside)
   },
   beforeUnmount() {
     console.log('🧹 ChatPopup unmounting, cleaning up')
@@ -309,6 +473,9 @@ export default {
     }
     socketService.off('newMessage', this.handleNewMessage)
     socketService.off('messageReactionUpdated', this.handleReactionUpdate)
+    
+    // Remove click outside listener
+    document.removeEventListener('click', this.handleClickOutside)
   },
   methods: {
     setupSocketListeners() {
@@ -332,6 +499,19 @@ export default {
         // Socket đã connect, setup listener ngay
         socketService.onNewMessage(this.handleNewMessage)
         socketService.onMessageReactionUpdated(this.handleReactionUpdate)
+        
+        // Listen for messages read updates
+        socketService.on('messagesRead', (data) => {
+          if (data.conversationId === this.conversationId) {
+            // Update readBy for all affected messages
+            data.messages.forEach(updatedMsg => {
+              const msgIndex = this.messages.findIndex(m => m._id === updatedMsg._id);
+              if (msgIndex !== -1) {
+                this.messages[msgIndex].readBy = updatedMsg.readBy;
+              }
+            });
+          }
+        });
       }
     },
 
@@ -451,6 +631,11 @@ export default {
         message.sender.profilePicture = message.sender.profilePicture || currentUser.profilePicture
       }
       
+      // Đảm bảo message có readBy
+      if (!message.readBy) {
+        message.readBy = [];
+      }
+      
       // Thêm tin nhắn mới vào danh sách
       this.messages.push(message)
       
@@ -551,11 +736,14 @@ export default {
           _id: 'temp-' + Date.now(),
           content: tempMessageContent,
           messageType: messageData.messageType,
+          file: tempFile ? tempFile.name : null,
+          originalFileName: tempFile ? tempFile.name : null,
           sender: {
             _id: currentUser._id,
             displayName: currentUser.displayName,
             profilePicture: currentUser.profilePicture
           },
+          readBy: [{ user: currentUser._id }],
           createdAt: new Date().toISOString(),
           isTemp: true
         }
@@ -904,6 +1092,34 @@ export default {
       }
     },
 
+    downloadFile(message) {
+      if (!message.file) return;
+      
+      const token = localStorage.getItem('token');
+      const filename = message.file;
+      const downloadUrl = `http://localhost:3000/api/messages/download/${filename}`;
+      
+      // Add auth header via fetch and blob
+      fetch(downloadUrl, {
+        headers: { token }
+      })
+      .then(response => response.blob())
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = message.originalFileName || message.file;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        this.showErrorMessage('Không thể tải file');
+      });
+    },
+
     formatTime(timestamp) {
       if (!timestamp) return ''
       
@@ -912,6 +1128,198 @@ export default {
       const minutes = date.getMinutes().toString().padStart(2, '0')
       
       return `${hours}:${minutes}`
+    },
+
+    showContextMenu(event, message) {
+      if (!this.isOwnMessage(message)) return;
+      
+      this.contextMessage = message;
+      
+      // Calculate position to prevent menu from going off-screen
+      const menuWidth = 150;
+      const menuHeight = 100;
+      let x = event.clientX;
+      let y = event.clientY;
+      
+      // If too close to right edge, position menu to the left
+      if (x + menuWidth > window.innerWidth) {
+        x = event.clientX - menuWidth;
+      }
+      
+      // If too close to bottom, position menu above
+      if (y + menuHeight > window.innerHeight) {
+        y = event.clientY - menuHeight;
+      }
+      
+      this.menuPosition = { x, y };
+      this.showMessageMenu = true;
+
+      const closeMenu = () => {
+        this.showMessageMenu = false;
+        document.removeEventListener('click', closeMenu);
+      };
+      setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+      }, 0);
+    },
+
+    canEdit(message) {
+      if (!message || message.messageType !== 'text') return false;
+      if (message.readBy && message.readBy.length > 1) return false;
+      return true;
+    },
+
+    editMessage() {
+      this.showMessageMenu = false;
+      this.editingMessageId = this.contextMessage._id;
+      this.editingContent = this.contextMessage.content || '';
+      this.showEditModal = true;
+      
+      this.$nextTick(() => {
+        if (this.$refs.editTextarea) {
+          this.$refs.editTextarea.focus();
+        }
+      });
+    },
+
+    cancelEdit() {
+      this.showEditModal = false;
+      this.editingContent = '';
+      this.editingMessageId = null;
+    },
+
+    async saveEdit() {
+      if (!this.editingContent.trim() || !this.editingMessageId) return;
+
+      try {
+        await MessageAPI.editMessage(this.editingMessageId, this.editingContent.trim());
+        
+        const messageIndex = this.messages.findIndex(m => m._id === this.editingMessageId);
+        if (messageIndex !== -1) {
+          this.messages[messageIndex].content = this.editingContent.trim();
+          this.messages[messageIndex].isEdited = true;
+        }
+
+        this.cancelEdit();
+      } catch (error) {
+        console.error('Edit message error:', error);
+        // Show error in a better way
+        this.showErrorMessage(error.response?.data?.error || 'Không thể sửa tin nhắn');
+      }
+    },
+
+    confirmDelete() {
+      this.showMessageMenu = false;
+      this.showDeleteModal = true;
+    },
+
+    async deleteMessage() {
+      if (!this.contextMessage) return;
+
+      try {
+        await MessageAPI.deleteMessage(this.contextMessage._id);
+        
+        const messageIndex = this.messages.findIndex(m => m._id === this.contextMessage._id);
+        if (messageIndex !== -1) {
+          this.messages.splice(messageIndex, 1);
+        }
+
+        this.showDeleteModal = false;
+
+      } catch (error) {
+        console.error('Delete message error:', error);
+        this.showErrorMessage('Không thể xóa tin nhắn');
+        this.showDeleteModal = false;
+      }
+    },
+
+    showErrorMessage(message) {
+      // Simple error display - can be enhanced with toast/snackbar later
+      console.error(message);
+      // Could emit to parent or show in modal
+    },
+
+    toggleEmojiPicker() {
+      this.showEmojiPicker = !this.showEmojiPicker;
+      if (!this.showEmojiPicker) {
+        this.emojiSearch = '';
+      }
+      if (this.showEmojiPicker) {
+        this.showAttachMenu = false;
+      }
+    },
+
+    closeEmojiPicker() {
+      this.showEmojiPicker = false;
+      this.emojiSearch = '';
+    },
+
+    toggleAttachMenu() {
+      this.showAttachMenu = !this.showAttachMenu;
+      if (this.showAttachMenu) {
+        this.showEmojiPicker = false;
+      }
+    },
+
+    handleClickOutside(event) {
+      const target = event.target;
+      const clickedInsidePopup = this.$el && this.$el.contains(target);
+      
+      if (!clickedInsidePopup) {
+        this.showAttachMenu = false;
+      }
+    },
+
+    insertEmoji(emoji) {
+      const input = this.$refs.chatInput;
+      const start = input.selectionStart;
+      const end = input.selectionEnd;
+      
+      this.messageInput = this.messageInput.substring(0, start) + emoji + this.messageInput.substring(end);
+      
+      this.$nextTick(() => {
+        input.focus();
+        const newPos = start + emoji.length;
+        input.setSelectionRange(newPos, newPos);
+      });
+    },
+
+    selectCategory(categoryId) {
+      this.activeCategory = categoryId;
+      this.emojiSearch = '';
+    },
+
+    filterEmojis() {
+      // Trigger computed property update
+    },
+
+    getCurrentCategoryName() {
+      const category = this.categories.find(c => c.id === this.activeCategory);
+      return category ? category.name : '';
+    }
+  },
+
+  computed: {
+    filteredEmojis() {
+      const search = this.emojiSearch.trim().toLowerCase();
+      
+      if (!search) {
+        // No search, return current category
+        return this.emojiData[this.activeCategory] || [];
+      }
+      
+      // Search by category name
+      const matchedCategories = this.categories.filter(cat => 
+        cat.name.toLowerCase().includes(search)
+      );
+      
+      if (matchedCategories.length > 0) {
+        // Return emojis from all matched categories
+        return matchedCategories.flatMap(cat => this.emojiData[cat.id] || []);
+      }
+      
+      // If no category match, return current category
+      return this.emojiData[this.activeCategory] || [];
     }
   }
 }
@@ -1152,6 +1560,40 @@ export default {
   overflow-wrap: break-word;
 }
 
+.message-bubble:hover .message-more-btn {
+  opacity: 1;
+  visibility: visible;
+}
+
+.message-more-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  z-index: 10;
+}
+
+.message-more-btn:hover {
+  background: rgba(0, 0, 0, 0.2);
+  transform: scale(1.1);
+}
+
+.message-more-btn i {
+  font-size: 16px;
+  color: white;
+}
+
 .message-bubble.own-bubble {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
@@ -1218,6 +1660,34 @@ export default {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.message-file:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.message-file i.material-icons {
+  font-size: 20px;
+}
+
+.message-file .download-icon {
+  margin-left: auto;
+  font-size: 18px;
+  opacity: 0.7;
+}
+
+.message-file span {
+  font-size: 0.875rem;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-input {
@@ -1229,23 +1699,71 @@ export default {
   background: white;
 }
 
-.input-actions {
-  display: flex;
-  gap: 0.25rem;
+/* Plus Menu */
+.plus-menu-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
-.action-icon {
-  font-size: 20px;
+.plus-icon {
+  font-size: 24px;
   color: #667eea;
   cursor: pointer;
-  padding: 0.375rem;
-  border-radius: 50%;
   transition: all 0.2s ease;
 }
 
-.action-icon:hover {
+.plus-icon:hover {
+  transform: rotate(90deg) scale(1.1);
+}
+
+.attach-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 8px;
+  min-width: 150px;
+  z-index: 1000;
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.attach-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.attach-menu-item:hover {
   background: #f7fafc;
-  transform: scale(1.1);
+}
+
+.attach-menu-item i {
+  font-size: 20px;
+  color: #667eea;
+}
+
+.attach-menu-item span {
+  font-size: 14px;
+  color: #334155;
+  font-weight: 500;
 }
 
 .message-input {
@@ -1262,20 +1780,42 @@ export default {
   color: #a0aec0;
 }
 
-.send-btn {
+/* Emoji Icon */
+.emoji-icon {
+  font-size: 22px;
+  color: #667eea;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem;
+}
+
+.emoji-icon:hover {
+  transform: scale(1.1);
+}
+
+/* Send Icon */
+.send-icon {
   font-size: 22px;
   color: #cbd5e0;
   cursor: pointer;
   transition: all 0.2s ease;
   padding: 0.375rem;
   border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.send-btn.active {
+.send-icon.active {
   color: #667eea;
 }
 
-.send-btn:hover.active {
+.send-icon:hover.active {
   background: #f7fafc;
   transform: scale(1.1);
 }
@@ -1335,6 +1875,362 @@ export default {
     right: 20px;
     width: calc(100% - 40px);
     max-width: 328px;
+  }
+}
+
+/* Context Menu */
+.message-context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem 0;
+  z-index: 10000;
+  min-width: 150px;
+}
+
+.message-context-menu .menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.message-context-menu .menu-item:hover {
+  background: #f3f4f6;
+}
+
+.message-context-menu .menu-item.delete {
+  color: #ef4444;
+}
+
+.message-context-menu .menu-item.delete:hover {
+  background: #fee2e2;
+}
+
+.message-context-menu .menu-item i {
+  font-size: 20px;
+}
+
+.message-context-menu .menu-item span {
+  font-size: 0.9rem;
+}
+
+/* Edit Modal */
+.edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.edit-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+}
+
+.edit-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.edit-modal-header h3 {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.edit-modal-header .close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+}
+
+.edit-modal-header .close-btn:hover {
+  background: #f3f4f6;
+}
+
+.edit-modal-body {
+  padding: 1.5rem;
+}
+
+.edit-modal-body textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.edit-modal-body textarea:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.edit-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+.edit-modal-footer button {
+  padding: 0.625rem 1.25rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.edit-modal-footer .btn-cancel {
+  background: #f3f4f6;
+  border: none;
+  color: #374151;
+}
+
+.edit-modal-footer .btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.edit-modal-footer .btn-save {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border: none;
+  color: white;
+}
+
+.edit-modal-footer .btn-save:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+}
+
+.edit-modal-footer .btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Delete button styles */
+.btn-delete {
+  background: #ef4444;
+  border: none;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.btn-delete:hover {
+  background: #dc2626;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.delete-confirm-modal .edit-modal-body {
+  padding: 20px;
+  text-align: center;
+}
+
+.delete-confirm-modal .edit-modal-body p {
+  margin: 0;
+  font-size: 16px;
+  color: #4b5563;
+}
+
+/* Emoji Picker Modal */
+.emoji-picker-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 99999;
+  background: transparent;
+}
+
+.emoji-picker-container {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+  width: 350px;
+  max-height: 450px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: fadeInUp 0.2s ease;
+}
+
+.emoji-picker-search {
+  display: flex;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 8px;
+}
+
+.emoji-picker-search i {
+  color: #9ca3af;
+  font-size: 20px;
+}
+
+.emoji-picker-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  color: #1f2937;
+}
+
+.emoji-picker-search input::placeholder {
+  color: #9ca3af;
+}
+
+.emoji-categories {
+  display: flex;
+  padding: 8px 12px;
+  gap: 4px;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-x: auto;
+}
+
+.emoji-categories::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-categories::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 2px;
+}
+
+.category-btn {
+  background: none;
+  border: none;
+  padding: 8px;
+  font-size: 20px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.category-btn:hover {
+  background: #f3f4f6;
+}
+
+.category-btn.active {
+  background: rgba(102, 126, 234, 0.1);
+}
+
+.emoji-category-title {
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6b7280;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.emoji-grid-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 4px;
+  align-content: start;
+}
+
+.emoji-grid-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.emoji-grid-container::-webkit-scrollbar-track {
+  background: #f3f4f6;
+}
+
+.emoji-grid-container::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.emoji-grid-container::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.emoji-item {
+  background: none;
+  border: none;
+  font-size: 28px;
+  padding: 6px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+}
+
+.emoji-item:hover {
+  background: #f3f4f6;
+  transform: scale(1.2);
+}
+
+.emoji-item:active {
+  transform: scale(1.1);
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 768px) {
+  .emoji-picker-container {
+    width: 320px;
+    max-height: 400px;
+  }
+  
+  .emoji-grid-container {
+    grid-template-columns: repeat(7, 1fr);
+  }
+  
+  .emoji-item {
+    font-size: 24px;
   }
 }
 </style>

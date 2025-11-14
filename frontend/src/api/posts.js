@@ -75,3 +75,13 @@ export const deletePost = (postId, userId) =>
     data: { userId }, 
     withCredentials: true 
   });
+
+// Edit and Delete comment endpoints
+export const editComment = (postId, commentId, comment, userId) =>
+  axios.put(`/posts/${postId}/comment/${commentId}`, { comment, userId }, { withCredentials: true });
+
+export const deleteComment = (postId, commentId, userId) =>
+  axios.delete(`/posts/${postId}/comment/${commentId}`, {
+    data: { userId },
+    withCredentials: true
+  });

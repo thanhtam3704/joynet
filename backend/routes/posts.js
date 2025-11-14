@@ -97,6 +97,91 @@ router.get("/:id/comments", async (req, res) => {
   }
 });
 
+// EDIT COMMENT
+router.put("/:postId/comment/:commentId", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.postId));
+    const sanitizedCommentId = sanitize(req.sanitize(req.params.commentId));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+    const sanitizedComment = sanitize(req.sanitize(req.body.comment));
+
+    const comment = await Comment.findById(sanitizedCommentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: "Bình luận không tồn tại" });
+    }
+
+    // Kiểm tra quyền sở hữu - chỉ người comment mới được sửa
+    if (comment.userId !== sanitizedUserId) {
+      return res.status(403).json({ error: "Bạn không có quyền sửa bình luận này" });
+    }
+
+    // Cập nhật comment
+    comment.comment = sanitizedComment;
+    comment.updatedAt = new Date();
+    await comment.save();
+
+    // Cập nhật trong mảng comments của post
+    const post = await Post.findById(sanitizedPostId);
+    if (post) {
+      const commentIndex = post.comments.findIndex(c => c._id && c._id.toString() === sanitizedCommentId);
+      if (commentIndex !== -1) {
+        post.comments[commentIndex].comment = sanitizedComment;
+        await post.save();
+      }
+    }
+
+    return res.status(200).json({
+      message: "Đã cập nhật bình luận thành công",
+      comment: comment
+    });
+  } catch (err) {
+    console.error("Edit comment error:", err);
+    return res.status(500).json({ error: "Lỗi server khi sửa bình luận" });
+  }
+});
+
+// DELETE COMMENT
+router.delete("/:postId/comment/:commentId", async (req, res) => {
+  try {
+    const sanitizedPostId = sanitize(req.sanitize(req.params.postId));
+    const sanitizedCommentId = sanitize(req.sanitize(req.params.commentId));
+    const sanitizedUserId = sanitize(req.sanitize(req.body.userId));
+
+    const comment = await Comment.findById(sanitizedCommentId);
+
+    if (!comment) {
+      return res.status(404).json({ error: "Bình luận không tồn tại" });
+    }
+
+    // Kiểm tra quyền sở hữu - chỉ người comment mới được xóa
+    if (comment.userId !== sanitizedUserId) {
+      return res.status(403).json({ error: "Bạn không có quyền xóa bình luận này" });
+    }
+
+    // Xóa comment khỏi collection Comment
+    await Comment.findByIdAndDelete(sanitizedCommentId);
+
+    // Xóa comment khỏi mảng comments của post
+    const post = await Post.findById(sanitizedPostId);
+    if (post) {
+      post.comments = post.comments.filter(c => c._id && c._id.toString() !== sanitizedCommentId);
+      await post.save();
+    }
+
+    // Xóa notifications liên quan đến comment này
+    await Notification.deleteMany({ commentId: sanitizedCommentId });
+
+    return res.status(200).json({
+      message: "Đã xóa bình luận thành công",
+      commentId: sanitizedCommentId
+    });
+  } catch (err) {
+    console.error("Delete comment error:", err);
+    return res.status(500).json({ error: "Lỗi server khi xóa bình luận" });
+  }
+});
+
 //GET COMMENTERS (unique users who commented)
 router.get("/:id/commenters", async (req, res) => {
   try {

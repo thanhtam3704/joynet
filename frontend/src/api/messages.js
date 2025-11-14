@@ -63,6 +63,16 @@ const MessageAPI = {
   // Thêm/sửa/xóa reaction
   addReaction(messageId, emoji) {
     return http.post(`/messages/messages/${messageId}/reaction`, { emoji });
+  },
+
+  // Sửa tin nhắn
+  editMessage(messageId, content) {
+    return http.put(`/messages/messages/${messageId}`, { content });
+  },
+
+  // Xóa tin nhắn
+  deleteMessage(messageId) {
+    return http.delete(`/messages/messages/${messageId}`);
   }
 };
 

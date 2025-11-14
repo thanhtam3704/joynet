@@ -379,6 +379,8 @@ export default {
               content: msg.content || '',
               messageType: msg.messageType || 'text',
               file: msg.file || null,
+              originalFileName: msg.originalFileName || null,
+              readBy: msg.readBy || [],
               timestamp: msg.createdAt ? new Date(msg.createdAt) : new Date(),
               isMyMessage: String(sender._id) === String(this.currentUserId), // Thêm flag rõ ràng
               reactions: reactions // Thêm reactions đã map
@@ -550,8 +552,10 @@ export default {
           content: messageData.content || '',
           messageType: messageData.messageType || 'text',
           file: messageData.file ? messageData.file.name : null,
+          originalFileName: messageData.file ? messageData.file.name : null,
           fileUrl: fileUrl,
           fileName: messageData.file ? messageData.file.name : null,
+          readBy: [{ user: this.currentUserId }],
           timestamp: new Date(),
           isSending: true,
           isMyMessage: true // Flag rõ ràng cho tin nhắn của tôi
@@ -576,6 +580,8 @@ export default {
             content: responseData.content || '',
             messageType: responseData.messageType || 'text',
             file: responseData.file || null,
+            originalFileName: responseData.originalFileName || null,
+            readBy: responseData.readBy || [{ user: this.currentUserId }],
             timestamp: responseData.createdAt ? new Date(responseData.createdAt) : new Date(),
             isMyMessage: true // ✅ QUAN TRỌNG: Đánh dấu đây là tin nhắn của tôi
           };
@@ -760,10 +766,15 @@ export default {
     });
       
     // Listen for new messages
-    socketService.onNewMessage((messageData) => {
+    socketService.onNewMessage((data) => {
+      console.log('📨 Message.vue received newMessage:', data);
+      
+      // Extract message from data (backend sends { conversationId, message })
+      const messageData = data.message || data;
+      const receivedConversationId = data.conversationId || messageData.conversationId;
       
       // Add message to current conversation if it matches
-      if (messageData.conversationId === this.activeConversationId) {
+      if (receivedConversationId === this.activeConversationId) {
         // Kiểm tra xem tin nhắn có phải từ người khác không
         const messageSenderId = String(messageData.sender?._id || messageData.senderId);
         const myUserId = String(this.currentUserId);
@@ -785,13 +796,15 @@ export default {
             content: messageData.content || '',
             messageType: messageData.messageType || 'text', 
             file: messageData.file || null,
+            originalFileName: messageData.originalFileName || null,
+            readBy: messageData.readBy || [],
             timestamp: messageData.createdAt ? new Date(messageData.createdAt) : new Date(),
             isMyMessage: false
           };
           
           this.messages.push(messageWithFlag);
           this.scrollToBottom();
-          this.markAsRead(messageData.conversationId);
+          this.markAsRead(receivedConversationId);
         }
       }
       
@@ -815,6 +828,23 @@ export default {
       socketService.onUserStopTyping((data) => {
         if (data.conversationId === this.activeConversationId) {
           // Hide typing indicator
+        }
+      });
+
+      // Listen for messages read updates
+      socketService.on('messagesRead', (data) => {
+        if (data.conversationId === this.activeConversationId) {
+          // Update readBy for all affected messages
+          data.messages.forEach(updatedMsg => {
+            const msgIndex = this.messages.findIndex(m => m._id === updatedMsg._id);
+            if (msgIndex !== -1) {
+              // Vue 3: Create new object to trigger reactivity
+              this.messages[msgIndex] = {
+                ...this.messages[msgIndex],
+                readBy: updatedMsg.readBy
+              };
+            }
+          });
         }
       });
       

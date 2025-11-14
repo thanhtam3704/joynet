@@ -43,6 +43,15 @@
             @touchstart.passive="startLongPress($event, message)"
             @touchend.passive="cancelLongPress"
           >
+            <!-- More Options Button -->
+            <button 
+              v-if="isMyMessage(message)" 
+              class="message-more-btn"
+              @click.stop.prevent="showContextMenu($event, message)"
+            >
+              <i class="material-icons">more_horiz</i>
+            </button>
+
             <div v-if="message && message.messageType === 'image'" class="message-image">
               <img 
                 :src="message && (message.fileUrl || (message.file ? `http://localhost:3000/uploads/${message.file}` : ''))" 
@@ -54,9 +63,10 @@
                 No image URL found
               </div>
             </div>
-            <div v-else-if="message && message.messageType === 'file'" class="message-file">
+            <div v-else-if="message && message.messageType === 'file'" class="message-file" @click="downloadFile(message)">
               <i class="material-icons">attach_file</i>
-              <span>{{ message && (message.fileName || message.file) || '' }}</span>
+              <span>{{ message.originalFileName || message.fileName || message.file || '' }}</span>
+              <i class="material-icons download-icon">download</i>
             </div>
             <span v-if="message && message.content">{{ message.content }}</span>
             <div v-if="message && message.isSending" class="message-status">
@@ -103,6 +113,66 @@
       :reactions="selectedMessageForReactors ? getMessageReactions(selectedMessageForReactors) : []"
       @close="showReactorsModal = false"
     />
+
+    <!-- Context Menu -->
+    <div 
+      v-if="showMessageMenu" 
+      class="message-context-menu"
+      :style="{ top: menuPosition.y + 'px', left: menuPosition.x + 'px' }"
+      @click.stop
+    >
+      <div class="menu-item" @click="editMessage" v-if="canEdit(contextMessage)">
+        <i class="material-icons">edit</i>
+        <span>Sửa</span>
+      </div>
+      <div class="menu-item delete" @click="confirmDelete">
+        <i class="material-icons">delete</i>
+        <span>Xóa</span>
+      </div>
+    </div>
+
+    <!-- Edit Message Modal -->
+    <div v-if="showEditModal" class="edit-modal-overlay" @click="cancelEdit">
+      <div class="edit-modal" @click.stop>
+        <div class="edit-modal-header">
+          <h3>Sửa tin nhắn</h3>
+          <button @click="cancelEdit" class="close-btn">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        <div class="edit-modal-body">
+          <textarea 
+            v-model="editingContent"
+            placeholder="Nhập nội dung tin nhắn..."
+            ref="editTextarea"
+            @keydown.enter.ctrl="saveEdit"
+          ></textarea>
+        </div>
+        <div class="edit-modal-footer">
+          <button @click="cancelEdit" class="btn-cancel">Hủy</button>
+          <button @click="saveEdit" class="btn-save" :disabled="!editingContent.trim()">Lưu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteModal" class="edit-modal-overlay" @click="showDeleteModal = false">
+      <div class="edit-modal delete-confirm-modal" @click.stop>
+        <div class="edit-modal-header">
+          <h3>Xác nhận xóa</h3>
+          <button @click="showDeleteModal = false" class="close-btn">
+            <i class="material-icons">close</i>
+          </button>
+        </div>
+        <div class="edit-modal-body">
+          <p>Bạn có chắc muốn xóa tin nhắn này?</p>
+        </div>
+        <div class="edit-modal-footer">
+          <button @click="showDeleteModal = false" class="btn-cancel">Hủy</button>
+          <button @click="deleteMessage" class="btn-delete">Xóa</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -140,7 +210,14 @@ export default {
       showReactorsModal: false,
       selectedMessageForReactors: null,
       shouldAutoScroll: true,
-      previousMessagesLength: 0
+      previousMessagesLength: 0,
+      showMessageMenu: false,
+      menuPosition: { x: 0, y: 0 },
+      contextMessage: null,
+      showEditModal: false,
+      showDeleteModal: false,
+      editingContent: '',
+      editingMessageId: null
     };
   },
   computed: {
@@ -235,6 +312,146 @@ export default {
     handleImageError(event) {
       console.error('Error loading image:', event);
       // Có thể hiển thị placeholder image hoặc error message
+    },
+    
+    downloadFile(message) {
+      if (!message.file) return;
+      
+      const token = localStorage.getItem('token');
+      const filename = message.file;
+      const downloadUrl = `http://localhost:3000/api/messages/download/${filename}`;
+      
+      // Create a temporary link and trigger download
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = message.originalFileName || message.file;
+      link.target = '_blank';
+      
+      // Add auth header via fetch and blob
+      fetch(downloadUrl, {
+        headers: { token }
+      })
+      .then(response => response.blob())
+      .then(blob => {
+        const url = window.URL.createObjectURL(blob);
+        link.href = url;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      })
+      .catch(error => {
+        console.error('Download error:', error);
+        this.$emit('show-error', 'Không thể tải file');
+      });
+    },
+
+    showContextMenu(event, message) {
+      if (!this.isMyMessage(message)) return;
+      
+      this.contextMessage = message;
+      
+      // Calculate position to prevent menu from going off-screen
+      const menuWidth = 150;
+      const menuHeight = 100;
+      let x = event.clientX;
+      let y = event.clientY;
+      
+      // If too close to right edge, position menu to the left
+      if (x + menuWidth > window.innerWidth) {
+        x = event.clientX - menuWidth;
+      }
+      
+      // If too close to bottom, position menu above
+      if (y + menuHeight > window.innerHeight) {
+        y = event.clientY - menuHeight;
+      }
+      
+      this.menuPosition = { x, y };
+      this.showMessageMenu = true;
+
+      // Close menu when clicking outside
+      const closeMenu = () => {
+        this.showMessageMenu = false;
+        document.removeEventListener('click', closeMenu);
+      };
+      setTimeout(() => {
+        document.addEventListener('click', closeMenu);
+      }, 0);
+    },
+
+    canEdit(message) {
+      if (!message || message.messageType !== 'text') return false;
+      // Check if message has been read by others (if readBy exists)
+      if (message.readBy && message.readBy.length > 1) return false;
+      return true;
+    },
+
+    editMessage() {
+      this.showMessageMenu = false;
+      this.editingMessageId = this.contextMessage._id;
+      this.editingContent = this.contextMessage.content || '';
+      this.showEditModal = true;
+      
+      this.$nextTick(() => {
+        if (this.$refs.editTextarea) {
+          this.$refs.editTextarea.focus();
+        }
+      });
+    },
+
+    cancelEdit() {
+      this.showEditModal = false;
+      this.editingContent = '';
+      this.editingMessageId = null;
+    },
+
+    async saveEdit() {
+      if (!this.editingContent.trim() || !this.editingMessageId) return;
+
+      try {
+        const MessageAPI = (await import('@/api/messages')).default;
+        await MessageAPI.editMessage(this.editingMessageId, this.editingContent.trim());
+        
+        // Update local message
+        const messageIndex = this.messages.findIndex(m => m._id === this.editingMessageId);
+        if (messageIndex !== -1) {
+          this.messages[messageIndex].content = this.editingContent.trim();
+          this.messages[messageIndex].isEdited = true;
+        }
+
+        this.cancelEdit();
+      } catch (error) {
+        console.error('Edit message error:', error);
+        this.$emit('show-error', error.response?.data?.error || 'Không thể sửa tin nhắn');
+      }
+    },
+
+    confirmDelete() {
+      this.showMessageMenu = false;
+      this.showDeleteModal = true;
+    },
+
+    async deleteMessage() {
+      if (!this.contextMessage) return;
+
+      try {
+        const MessageAPI = (await import('@/api/messages')).default;
+        await MessageAPI.deleteMessage(this.contextMessage._id);
+        
+        // Remove from local messages or mark as deleted
+        const messageIndex = this.messages.findIndex(m => m._id === this.contextMessage._id);
+        if (messageIndex !== -1) {
+          this.messages.splice(messageIndex, 1);
+        }
+
+        this.showDeleteModal = false;
+
+      } catch (error) {
+        console.error('Delete message error:', error);
+        this.$emit('show-error', 'Không thể xóa tin nhắn');
+        this.showDeleteModal = false;
+      }
     },
     
     getAvatarUrl(avatarPath) {
@@ -589,6 +806,11 @@ export default {
   &:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+
+    .message-more-btn {
+      opacity: 1;
+      visibility: visible;
+    }
   }
   
   &.incoming {
@@ -607,6 +829,35 @@ export default {
     &:hover {
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
+  }
+}
+
+.message-more-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s ease;
+  z-index: 10;
+
+  &:hover {
+    background: rgba(0, 0, 0, 0.2);
+    transform: scale(1.1);
+  }
+
+  i {
+    font-size: 18px;
+    color: white;
   }
 }
 
@@ -646,18 +897,35 @@ export default {
 .message-file {
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 0.5rem;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s ease;
   
-  i {
-    margin-right: 10px;
+  &:hover {
+    background: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+  }
+  
+  i.material-icons {
     font-size: 20px;
+  }
+  
+  .download-icon {
+    margin-left: auto;
+    font-size: 18px;
+    opacity: 0.7;
   }
   
   span {
     font-size: 0.8125rem;
     font-weight: 500;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 
@@ -806,6 +1074,185 @@ export default {
   .message-image img {
     max-width: 200px;
     max-height: 250px;
+  }
+}
+
+// Context Menu
+.message-context-menu {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  padding: 0.5rem 0;
+  z-index: 10000;
+  min-width: 150px;
+
+  .menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover {
+      background: #f3f4f6;
+    }
+
+    &.delete {
+      color: #ef4444;
+
+      &:hover {
+        background: #fee2e2;
+      }
+    }
+
+    i {
+      font-size: 20px;
+    }
+
+    span {
+      font-size: 0.9rem;
+    }
+  }
+}
+
+// Edit Modal
+.edit-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.edit-modal {
+  background: white;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 500px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+
+  .edit-modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+
+    h3 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .close-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      color: #6b7280;
+      padding: 0.25rem;
+      display: flex;
+      align-items: center;
+      border-radius: 4px;
+
+      &:hover {
+        background: #f3f4f6;
+      }
+    }
+  }
+
+  .edit-modal-body {
+    padding: 1.5rem;
+
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      resize: vertical;
+
+      &:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+    }
+  }
+
+  .edit-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e5e7eb;
+
+    button {
+      padding: 0.625rem 1.25rem;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+
+      &.btn-cancel {
+        background: #f3f4f6;
+        border: none;
+        color: #374151;
+
+        &:hover {
+          background: #e5e7eb;
+        }
+      }
+
+      &.btn-save {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border: none;
+        color: white;
+
+        &:hover:not(:disabled) {
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        &:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+        }
+      }
+
+      &.btn-delete {
+        background: #ef4444;
+        border: none;
+        color: white;
+
+        &:hover {
+          background: #dc2626;
+          transform: translateY(-1px);
+          box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+        }
+      }
+    }
+  }
+}
+
+.delete-confirm-modal {
+  .edit-modal-body {
+    p {
+      margin: 0;
+      color: #374151;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
   }
 }
 </style>

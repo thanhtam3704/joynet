@@ -29,6 +29,18 @@ const MessageSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  originalFileName: {
+    type: String,
+    default: null
+  },
+  isEdited: {
+    type: Boolean,
+    default: false
+  },
+  editedAt: {
+    type: Date,
+    default: null
+  },
   isRead: {
     type: Boolean,
     default: false
