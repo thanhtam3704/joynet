@@ -102,6 +102,9 @@ export default {
     };
   },
   mounted() {
+    // ✅ Clear store và disconnect socket khi vào trang login
+    this.$store.commit('clearUser');
+    
     // Kiểm tra URL params để xử lý Google OAuth callback
     this.handleGoogleCallback();
   },

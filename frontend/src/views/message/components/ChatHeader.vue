@@ -32,17 +32,11 @@
         <div class="chat-header-status">{{ getActivityStatus() }}</div>
       </div>
     </div>
-    <!-- <div class="chat-header-actions">
-      <button class="chat-header-button">
-        <i class="material-icons">phone</i>
-      </button>
-      <button class="chat-header-button">
+    <div class="chat-header-actions">
+      <button class="chat-header-button" @click="startVideoCall" title="Gọi video">
         <i class="material-icons">videocam</i>
       </button>
-      <button class="chat-header-button">
-        <i class="material-icons">info</i>
-      </button>
-    </div> -->
+    </div>
   </div>
 </template>
 
@@ -56,6 +50,9 @@ export default {
     }
   },
   methods: {
+    startVideoCall() {
+      this.$emit('start-video-call');
+    },
     getConversationTitle() {
       if (!this.conversation) return 'Unknown User';
       if (this.conversation.isGroup) {

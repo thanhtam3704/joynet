@@ -109,6 +109,9 @@ export default {
     };
   },
   mounted() {
+    // Clear any existing user state when visiting signup page
+    this.$store.commit('clearUser');
+    
     // Kiểm tra URL params để xử lý Google OAuth callback
     this.handleGoogleCallback();
   },

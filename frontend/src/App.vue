@@ -1,14 +1,27 @@
 <template>
   <div id="nav">
     <router-view />
+    <!-- ✅ Only render ChatPopupsManager if user is logged in -->
+    <ChatPopupsManager v-if="isAuthenticated" />
   </div>
 </template>
 
 <script>
 import socketService from '@/services/socketService'
+import ChatPopupsManager from '@/components/ChatPopupsManager.vue'
 
 export default {
   name: 'App',
+  components: {
+    ChatPopupsManager
+  },
+  computed: {
+    isAuthenticated() {
+      // ✅ Chỉ dựa vào store state, không dựa vào localStorage
+      // Vì token có thể còn trong localStorage nhưng đã hết hạn hoặc invalid
+      return !!this.$store.state.user && !!this.$store.state.user._id
+    }
+  },
   async mounted() {
     // Only load user if token exists
     const token = localStorage.getItem('token')
@@ -40,8 +53,22 @@ export default {
     connectSocketIfAuthenticated() {
       const token = localStorage.getItem('token')
       if (token && !socketService.isConnected) {
+        // ✅ Connect socket - listeners sẽ được setup bởi các components
         socketService.connect()
+        
+        // Setup notification listener
         this.setupNotificationListener()
+        
+        // ✅ Đảm bảo video call listener được setup ngay sau khi connect
+        // Điều này đảm bảo rằng khi backend gửi video-call:incoming ngay sau connect,
+        // listener đã sẵn sàng để nhận
+        this.$nextTick(() => {
+          if (window.ChatPopupsManager && window.ChatPopupsManager.handleGlobalIncomingCall) {
+            console.log('✅ [App] Ensuring video call listener is registered after connect');
+            socketService.off('video-call:incoming'); // Remove any existing listener
+            socketService.on('video-call:incoming', window.ChatPopupsManager.handleGlobalIncomingCall);
+          }
+        })
       }
     },
     

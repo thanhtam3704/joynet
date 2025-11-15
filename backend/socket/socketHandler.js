@@ -1,9 +1,14 @@
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const Message = require('../models/Message');
+const Conversation = require('../models/Conversation');
 
 // Store active user connections
 const userSockets = new Map(); // userId -> socketId
 const socketUsers = new Map(); // socketId -> userId
+
+// Store ongoing video calls: conversationId -> { callerId, callerName, callerAvatar, participants: [userId1, userId2, ...], startTime, isGroupCall }
+const ongoingCalls = new Map();
 
 module.exports = (io) => {
   // Authentication middleware
@@ -47,6 +52,32 @@ module.exports = (io) => {
 
     // Join user to their personal room for notifications
     socket.join(`user_${userId}`);
+
+    // ✅ Check for ongoing calls that this user should receive (with delay)
+    // Delay to ensure frontend has time to setup listeners
+    setTimeout(() => {
+      console.log('🔍 [Connection] Checking for ongoing calls for user:', userId);
+      for (const [conversationId, callData] of ongoingCalls.entries()) {
+        console.log('🔍 [Connection] Checking call:', conversationId, callData);
+        // Check if this user is a participant in the call
+        const isParticipant = callData.participants.some(p => {
+          const participantId = p._id ? p._id.toString() : p.toString();
+          return participantId === userId;
+        });
+        
+        if (isParticipant && callData.callerId !== userId) {
+          console.log('📞 [Connection] Found ongoing call for user, sending incoming call event');
+          // Send incoming call event to this user
+          io.to(socket.id).emit('video-call:incoming', {
+            conversationId,
+            callerId: callData.callerId,
+            callerName: callData.callerName,
+            callerAvatar: callData.callerAvatar,
+            isGroupCall: callData.isGroupCall
+          });
+        }
+      }
+    }, 500); // 500ms delay to let frontend setup listeners
 
     // Handle joining conversation rooms
     socket.on('join_conversation', (conversationId) => {
@@ -103,6 +134,366 @@ module.exports = (io) => {
           }).catch(err => console.error('Update offline status error:', err));
         }
       }, 5000); // 5 second delay
+    });
+
+    // VIDEO CALL SOCKET EVENTS
+    
+    // Start video call
+    socket.on('video-call:start', ({ conversationId, participants, isGroupCall }) => {
+      console.log(`📞 [VideoCall] User ${userId} starting call in ${conversationId}`);
+      console.log('📞 [VideoCall] Participants:', participants);
+      console.log('📞 [VideoCall] IsGroupCall:', isGroupCall);
+      console.log('📞 [VideoCall] Current userSockets:', Array.from(userSockets.keys()));
+      console.log('📞 [VideoCall] Current userSockets Map:', Array.from(userSockets.entries()));
+      
+      // ✅ Store ongoing call
+      ongoingCalls.set(conversationId, {
+        callerId: userId,
+        callerName: socket.user.displayName || 'Unknown',
+        callerAvatar: socket.user.profilePicture || '',
+        participants: participants,
+        startTime: Date.now(),
+        isGroupCall: isGroupCall
+      });
+      console.log('💾 [VideoCall] Stored ongoing call:', conversationId);
+      
+      // Notify all participants except caller
+      participants.forEach(participant => {
+        const participantId = participant._id ? participant._id.toString() : participant.toString();
+        console.log(`📞 [VideoCall] Checking participant: ${participantId} vs caller: ${userId}`);
+        console.log(`📞 [VideoCall] participantId type: ${typeof participantId}, userId type: ${typeof userId}`);
+        
+        if (participantId !== userId) {
+          const targetSocketId = userSockets.get(participantId);
+          console.log(`📞 [VideoCall] Target socket for ${participantId}:`, targetSocketId);
+          console.log(`📞 [VideoCall] Checking in userSockets.has(${participantId}):`, userSockets.has(participantId));
+          
+          if (targetSocketId) {
+            // Emit to specific socket ID
+            io.to(targetSocketId).emit('video-call:incoming', {
+              conversationId,
+              callerId: userId,
+              callerName: socket.user.displayName || 'Unknown',
+              callerAvatar: socket.user.profilePicture || '',
+              isGroupCall
+            });
+            console.log(`✅ [VideoCall] Sent incoming call to socket ${targetSocketId} (user ${participantId})`);
+          } else {
+            console.log(`⚠️ [VideoCall] User ${participantId} is not online`);
+          }
+        } else {
+          console.log(`⏭️ [VideoCall] Skipping caller ${participantId}`);
+        }
+      });
+      
+      // Join call room
+      socket.join(`call_${conversationId}`);
+      console.log(`✅ [VideoCall] User ${userId} joined room call_${conversationId}`);
+    });
+
+    // Call accepted by receiver
+    socket.on('video-call:accept', ({ conversationId, callerId }) => {
+      console.log(`✅ [VideoCall] User ${userId} accepted call from ${callerId}`);
+      const callerSocket = userSockets.get(callerId);
+      if (callerSocket) {
+        io.to(callerSocket).emit('video-call:accepted', {
+          userId,
+          userName: socket.user.displayName,
+          conversationId
+        });
+      }
+      // Both users join the call room
+      socket.join(`call_${conversationId}`);
+    });
+
+    // Call cancelled by caller
+    socket.on('video-call:cancel', async ({ conversationId }) => {
+      console.log(`❌ [VideoCall] User ${userId} cancelled call ${conversationId}`);
+      
+      // Create system message for missed call
+      try {
+        const message = new Message({
+          conversationId,
+          sender: userId,
+          content: '📞 Đã bỏ lỡ cuộc gọi video',
+          messageType: 'text'
+        });
+        await message.save();
+        
+        // Populate sender info
+        await message.populate('sender', 'displayName profilePicture email');
+        
+        console.log('📞 [VideoCall] Message created:', {
+          messageId: message._id,
+          sender: message.sender,
+          content: message.content
+        });
+        
+        // Convert to plain object
+        const messageObj = message.toObject();
+        
+        // Update conversation's lastMessage and get participants
+        const conversation = await Conversation.findByIdAndUpdate(
+          conversationId,
+          {
+            lastMessage: message._id,
+            updatedAt: new Date()
+          },
+          { new: true }
+        ).populate('participants', '_id');
+        
+        // Emit message to conversation room (for users currently in chat)
+        io.to(`conversation_${conversationId}`).emit('newMessage', {
+          conversationId: conversationId,
+          message: messageObj
+        });
+        
+        // Emit to each participant's personal room (for notification updates)
+        if (conversation && conversation.participants) {
+          conversation.participants.forEach(participant => {
+            const participantId = participant._id.toString();
+            if (participantId !== userId.toString()) {
+              io.to(`user_${participantId}`).emit('newMessageNotification', {
+                conversationId: conversationId,
+                message: messageObj
+              });
+            }
+          });
+        }
+        
+        console.log('✅ [VideoCall] Missed call message created and emitted:', messageObj._id);
+      } catch (error) {
+        console.error('❌ [VideoCall] Error creating missed call message:', error);
+      }
+      
+      // ✅ Remove from ongoing calls
+      ongoingCalls.delete(conversationId);
+      console.log('🗑️ [VideoCall] Removed ongoing call:', conversationId);
+      
+      socket.to(`call_${conversationId}`).emit('video-call:cancelled', {
+        conversationId
+      });
+      socket.leave(`call_${conversationId}`);
+    });
+
+    // User joins video call
+    socket.on('video-call:join', ({ conversationId }) => {
+      console.log(`📞 [VideoCall] User ${userId} joined call ${conversationId}`);
+      socket.join(`call_${conversationId}`);
+      
+      // Notify others in call
+      socket.to(`call_${conversationId}`).emit('video-call:user-joined', {
+        userId,
+        userName: socket.user.displayName
+      });
+    });
+
+    // WebRTC Offer
+    socket.on('video-call:offer', ({ to, offer, conversationId }) => {
+      console.log(`📞 [VideoCall] Offer from ${userId} to ${to}`);
+      const targetSocket = userSockets.get(to);
+      if (targetSocket) {
+        io.to(targetSocket).emit('video-call:offer', {
+          from: userId,
+          userName: socket.user.displayName,
+          offer,
+          conversationId
+        });
+      }
+    });
+
+    // WebRTC Answer
+    socket.on('video-call:answer', ({ to, answer, conversationId }) => {
+      console.log(`📞 [VideoCall] Answer from ${userId} to ${to}`);
+      const targetSocket = userSockets.get(to);
+      if (targetSocket) {
+        io.to(targetSocket).emit('video-call:answer', {
+          from: userId,
+          answer,
+          conversationId
+        });
+      }
+    });
+
+    // ICE Candidate
+    socket.on('video-call:ice-candidate', ({ to, candidate, conversationId }) => {
+      const targetSocket = userSockets.get(to);
+      if (targetSocket) {
+        io.to(targetSocket).emit('video-call:ice-candidate', {
+          from: userId,
+          candidate,
+          conversationId
+        });
+      }
+    });
+
+    // Toggle media (mic/camera)
+    socket.on('video-call:toggle-media', ({ conversationId, type, enabled }) => {
+      socket.to(`call_${conversationId}`).emit('video-call:toggle-media', {
+        userId,
+        type,
+        enabled
+      });
+    });
+
+    // End call
+    socket.on('video-call:end', async ({ conversationId, duration, createSystemMessage }) => {
+      console.log(`📞 [VideoCall] User ${userId} ended call ${conversationId}`);
+      console.log(`📞 [VideoCall] Duration: ${duration}s, Create message: ${createSystemMessage}`);
+      
+      // Create system message if requested (when last person leaves)
+      if (createSystemMessage && duration > 0) {
+        try {
+          const minutes = Math.floor(duration / 60);
+          const seconds = duration % 60;
+          let durationText = '';
+          
+          if (minutes > 0) {
+            durationText = `${minutes} phút`;
+            if (seconds > 0) {
+              durationText += ` ${seconds} giây`;
+            }
+          } else {
+            durationText = `${seconds} giây`;
+          }
+          
+          const message = new Message({
+            conversationId,
+            sender: userId,
+            content: ` 🎥📞Cuộc gọi video\n${durationText}`,
+            messageType: 'text'
+          });
+          await message.save();
+          
+          // Populate sender info
+          await message.populate('sender', 'displayName profilePicture email');
+          
+          console.log('📞 [VideoCall] Call end message created:', {
+            messageId: message._id,
+            content: message.content
+          });
+          
+          // Convert to plain object
+          const messageObj = message.toObject();
+          
+          // Update conversation's lastMessage
+          await Conversation.findByIdAndUpdate(
+            conversationId,
+            {
+              lastMessage: message._id,
+              updatedAt: new Date()
+            },
+            { new: true }
+          );
+          
+          // Update conversation and get participants
+          const conversation = await Conversation.findById(conversationId).populate('participants', '_id');
+          
+          // Emit message to conversation room
+          io.to(`conversation_${conversationId}`).emit('newMessage', {
+            conversationId: conversationId,
+            message: messageObj
+          });
+          
+          // Emit to each participant's personal room for notification
+          if (conversation && conversation.participants) {
+            conversation.participants.forEach(participant => {
+              const participantId = participant._id.toString();
+              io.to(`user_${participantId}`).emit('newMessageNotification', {
+                conversationId: conversationId,
+                message: messageObj
+              });
+            });
+          }
+          
+          console.log('✅ [VideoCall] Call duration message sent to all participants');
+        } catch (error) {
+          console.error('❌ [VideoCall] Error creating call end message:', error);
+        }
+      }
+      
+      // ✅ Remove from ongoing calls when call ends
+      ongoingCalls.delete(conversationId);
+      console.log('🗑️ [VideoCall] Removed ongoing call on end:', conversationId);
+      
+      socket.to(`call_${conversationId}`).emit('video-call:user-left', {
+        userId
+      });
+      socket.leave(`call_${conversationId}`);
+    });
+
+    // Call rejected
+    socket.on('video-call:reject', async ({ conversationId, callerId }) => {
+      console.log(`📞 [VideoCall] User ${userId} rejected call from ${callerId}`);
+      
+      // Create system message for missed call
+      try {
+        const message = new Message({
+          conversationId,
+          sender: callerId,
+          content: '📞 Đã bỏ lỡ cuộc gọi video',
+          messageType: 'text'
+        });
+        await message.save();
+        
+        // Populate sender info
+        await message.populate('sender', 'displayName profilePicture email');
+        
+        console.log('📞 [VideoCall] Message created:', {
+          messageId: message._id,
+          sender: message.sender,
+          content: message.content
+        });
+        
+        // Convert to plain object
+        const messageObj = message.toObject();
+        
+        // Update conversation's lastMessage and get participants
+        const conversation = await Conversation.findByIdAndUpdate(
+          conversationId,
+          {
+            lastMessage: message._id,
+            updatedAt: new Date()
+          },
+          { new: true }
+        ).populate('participants', '_id');
+        
+        // Emit message to conversation room (for users currently in chat)
+        io.to(`conversation_${conversationId}`).emit('newMessage', {
+          conversationId: conversationId,
+          message: messageObj
+        });
+        
+        // Emit to each participant's personal room (for notification updates)
+        if (conversation && conversation.participants) {
+          conversation.participants.forEach(participant => {
+            const participantId = participant._id.toString();
+            if (participantId !== callerId.toString()) {
+              io.to(`user_${participantId}`).emit('newMessageNotification', {
+                conversationId: conversationId,
+                message: messageObj
+              });
+            }
+          });
+        }
+        
+        console.log('✅ [VideoCall] Missed call message created and emitted:', messageObj._id);
+      } catch (error) {
+        console.error('❌ [VideoCall] Error creating missed call message:', error);
+      }
+      
+      // ✅ Remove from ongoing calls
+      ongoingCalls.delete(conversationId);
+      console.log('🗑️ [VideoCall] Removed ongoing call on reject:', conversationId);
+      
+      const callerSocket = userSockets.get(callerId);
+      if (callerSocket) {
+        io.to(callerSocket).emit('video-call:rejected', {
+          userId,
+          userName: socket.user.displayName,
+          conversationId
+        });
+      }
     });
   });
 

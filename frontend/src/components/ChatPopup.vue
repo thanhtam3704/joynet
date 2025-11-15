@@ -1,5 +1,6 @@
 <template>
-  <div class="chat-popup" v-if="isVisible" :class="{ 'minimized': isMinimized }">
+  <div>
+    <div class="chat-popup" v-if="isVisible" :class="{ 'minimized': isMinimized }" v-bind="$attrs">
     <div class="chat-header" @click="toggleMinimize">
       <div class="chat-user-info">
         <!-- Group Chat Avatar -->
@@ -50,6 +51,15 @@
         </div>
       </div>
       <div class="chat-actions">
+        <!-- Video Call Button -->
+        <i 
+          class="material-icons action-btn video-call-btn" 
+          @click.stop="startVideoCall"
+          title="Gọi video"
+        >
+          videocam
+        </i>
+        
         <!-- Group Members Button -->
         <i 
           v-if="conversation?.isGroup" 
@@ -334,6 +344,25 @@
         @left-group="handleLeftGroup"
       />
     </teleport>
+
+    <!-- Calling Modal (waiting for answer) -->
+    <CallingModal
+      ref="callingModal"
+      :recipientName="recipientName"
+      :recipientAvatar="recipientAvatar"
+      :is-group-call="conversation?.isGroup || false"
+      @cancel="cancelCall"
+    />
+
+    <!-- Video Call Modal -->
+    <VideoCallModal
+      ref="videoCallModal"
+      :conversationId="conversation?._id"
+      :participants="conversation?.participants || []"
+      :is-group-call="conversation?.isGroup || false"
+      @call-ended="onCallEnded"
+    />
+  </div>
   </div>
 </template>
 
@@ -344,14 +373,20 @@ import GroupMembersModal from './GroupMembersModal.vue';
 import MessageReactionPicker from './MessageReactionPicker.vue';
 import MessageReactionsSummary from './MessageReactionsSummary.vue';
 import MessageReactorsModal from './MessageReactorsModal.vue';
+import VideoCallModal from './VideoCallModal.vue';
+import CallingModal from './CallingModal.vue';
 
 export default {
   name: 'ChatPopup',
+  inheritAttrs: false,
   components: {
     GroupMembersModal,
     MessageReactionPicker,
     MessageReactionsSummary,
-    MessageReactorsModal
+    MessageReactorsModal,
+    VideoCallModal,
+    CallingModal,
+    CallingModal
   },
   props: {
     conversation: {
@@ -445,9 +480,14 @@ export default {
     }
   },
   mounted() {
+    console.log('🔵 [ChatPopup] Mounted for conversation:', this.conversation?._id);
+    console.log('🔵 [ChatPopup] Setting up video call listener...');
+    
     // Đợi một chút để đảm bảo socket đã connect
     this.$nextTick(() => {
       this.setupSocketListeners()
+      
+      console.log('✅ [ChatPopup] Socket listeners setup complete');
       
       // Scroll xuống tin nhắn mới nhất khi mở popup lần đầu - tăng delay lên 1s
       setTimeout(() => {
@@ -473,6 +513,7 @@ export default {
     }
     socketService.off('newMessage', this.handleNewMessage)
     socketService.off('messageReactionUpdated', this.handleReactionUpdate)
+    // video-call:incoming is now handled globally in ChatPopupsManager
     
     // Remove click outside listener
     document.removeEventListener('click', this.handleClickOutside)
@@ -612,29 +653,76 @@ export default {
       }
 
       
-      // Đảm bảo message có sender đầy đủ
+      // ✅ Đảm bảo message có sender đầy đủ (ưu tiên dữ liệu từ backend)
+      console.log('📨 [ChatPopup] Received message with sender:', message.sender);
+      
       if (!message.sender || typeof message.sender === 'string') {
-        // Nếu sender là string hoặc không tồn tại, tạo object sender
+        // Nếu sender là string hoặc không tồn tại, cần populate
         const currentUser = this.$store.state.user
-        const senderId = message.sender || message.sender?._id
+        const senderId = typeof message.sender === 'string' ? message.sender : message.sender?._id
+        
+        // Tìm participant info từ conversation
+        const participant = this.conversation.participant || 
+                           this.conversation.participants?.find(p => p._id === senderId)
         
         message.sender = {
           _id: senderId,
-          displayName: senderId === currentUser._id ? currentUser.displayName : 'Unknown',
-          profilePicture: senderId === currentUser._id ? currentUser.profilePicture : null
+          displayName: participant?.displayName || 
+                      (senderId === currentUser._id ? currentUser.displayName : 'Unknown'),
+          profilePicture: participant?.profilePicture || 
+                         (senderId === currentUser._id ? currentUser.profilePicture : null)
         }
-      } else if (!message.sender.displayName || !message.sender._id) {
-        // Sender là object nhưng thiếu thông tin
-        const currentUser = this.$store.state.user
-        message.sender._id = message.sender._id || currentUser._id
-        message.sender.displayName = message.sender.displayName || currentUser.displayName
-        message.sender.profilePicture = message.sender.profilePicture || currentUser.profilePicture
+      } else if (message.sender && typeof message.sender === 'object') {
+        // ✅ Sender đã là object - kiểm tra đầy đủ thông tin
+        if (!message.sender._id || !message.sender.displayName) {
+          const currentUser = this.$store.state.user
+          const senderId = message.sender._id || currentUser._id
+          
+          // Tìm thông tin từ conversation participants
+          const participant = this.conversation.participant || 
+                             this.conversation.participants?.find(p => p._id === senderId)
+          
+          message.sender._id = senderId
+          message.sender.displayName = message.sender.displayName || 
+                                       participant?.displayName || 
+                                       currentUser.displayName
+          message.sender.profilePicture = message.sender.profilePicture || 
+                                          participant?.profilePicture || 
+                                          currentUser.profilePicture
+        }
+        // ✅ Sender đã đầy đủ - giữ nguyên thông tin từ backend
+        console.log('✅ [ChatPopup] Sender info complete:', {
+          _id: message.sender._id,
+          displayName: message.sender.displayName,
+          profilePicture: message.sender.profilePicture
+        });
       }
       
       // Đảm bảo message có readBy
       if (!message.readBy) {
         message.readBy = [];
       }
+      
+      // Map reactions về đúng format frontend
+      if (message.reactions) {
+        message.reactions = message.reactions.map(r => {
+          const user = r.user || {}
+          const userName = user.displayName || 
+                          (user.email ? user.email.split('@')[0] : null) ||
+                          'Unknown User'
+          
+          return {
+            userId: user._id || r.user,
+            userName: userName,
+            userAvatar: user.profilePicture || null,
+            emoji: r.emoji
+          }
+        })
+      } else {
+        message.reactions = []
+      }
+      
+      console.log('✅ [ChatPopup] Adding message with avatar:', message.sender?.profilePicture);
       
       // Thêm tin nhắn mới vào danh sách
       this.messages.push(message)
@@ -1166,6 +1254,9 @@ export default {
     canEdit(message) {
       if (!message || message.messageType !== 'text') return false;
       if (message.readBy && message.readBy.length > 1) return false;
+      // Don't allow editing system messages (video call, etc.)
+      if (message.content && message.content.includes('📞 Đã bỏ lỡ cuộc gọi video')) return false;
+      if (message.content && message.content.includes('Cuộc gọi video')) return false;
       return true;
     },
 
@@ -1296,6 +1387,218 @@ export default {
     getCurrentCategoryName() {
       const category = this.categories.find(c => c.id === this.activeCategory);
       return category ? category.name : '';
+    },
+
+    // Video Call Methods
+    startVideoCall() {
+      console.log('📞 [ChatPopup] Starting video call...');
+      console.log('📞 [ChatPopup] Socket connected:', socketService.getConnectionStatus());
+      console.log('📞 [ChatPopup] Conversation:', this.conversation);
+      console.log('📞 [ChatPopup] Computed recipientName:', this.recipientName);
+      console.log('📞 [ChatPopup] Computed recipientAvatar:', this.recipientAvatar);
+      console.log('📞 [ChatPopup] Conversation.participant:', this.conversation?.participant);
+      console.log('📞 [ChatPopup] Conversation.recipientName:', this.conversation?.recipientName);
+      
+      // Show calling modal instead of immediately starting video
+      if (this.$refs.callingModal) {
+        this.$refs.callingModal.show();
+      }
+
+      // Build participants array
+      let participants = [];
+      if (this.conversation.isGroup) {
+        // Group chat: use participants array
+        participants = this.conversation.participants || [];
+      } else {
+        // 1-1 chat: build array from participant info
+        if (this.conversation.participant) {
+          participants = [this.conversation.participant];
+        } else if (this.conversation.recipientId) {
+          participants = [{ _id: this.conversation.recipientId }];
+        }
+      }
+
+      console.log('📞 [ChatPopup] Participants to notify:', participants);
+
+      // Emit call start - backend will notify other users
+      socketService.emit('video-call:start', {
+        conversationId: this.conversation._id,
+        participants: participants,
+        isGroupCall: this.conversation.isGroup || false
+      });
+
+      // Reset cancel flag for new call
+      this._callCancelled = false;
+      
+      // Remove old listeners first to prevent duplicates
+      if (this._acceptedHandler) {
+        socketService.off('video-call:accepted', this._acceptedHandler);
+      }
+      if (this._rejectedHandler) {
+        socketService.off('video-call:rejected', this._rejectedHandler);
+      }
+      
+      // Set timeout 45 seconds - auto cancel if not answered
+      this._callTimeout = setTimeout(() => {
+        console.log('⏱️ [ChatPopup] Call timeout - no answer after 45s');
+        this.cancelCall();
+        if (this.$refs.callingModal) {
+          this.$refs.callingModal.hide();
+        }
+      }, 45000);
+
+      // Listen for when someone accepts - use arrow function to preserve context
+      const acceptedHandler = () => {
+        console.log('✅ [ChatPopup] Call accepted by recipient');
+        console.log('🎬 [ChatPopup] Hiding calling modal and starting video');
+        
+        // Clear timeout since call was accepted
+        if (this._callTimeout) {
+          clearTimeout(this._callTimeout);
+          this._callTimeout = null;
+        }
+        
+        // Hide calling modal
+        if (this.$refs.callingModal) {
+          console.log('✅ [ChatPopup] Calling modal found, hiding');
+          this.$refs.callingModal.hide();
+        } else {
+          console.error('❌ [ChatPopup] Calling modal ref not found');
+        }
+        
+        // Start actual video call
+        if (this.$refs.videoCallModal) {
+          console.log('✅ [ChatPopup] VideoCallModal found, starting call');
+          
+          // Mark as active call in global manager BEFORE starting
+          if (window.ChatPopupsManager) {
+            window.ChatPopupsManager.activeVideoCall = { conversationId: this.conversation._id };
+            console.log('✅ [ChatPopup] Set activeVideoCall for caller:', window.ChatPopupsManager.activeVideoCall);
+          }
+          
+          // Note: activeVideoCall will be cleared by onVideoCallEnded() when call ends
+          
+          this.$refs.videoCallModal.startCall();
+        } else {
+          console.error('❌ [ChatPopup] VideoCallModal ref not found');
+        }
+        
+        // Cleanup listeners
+        socketService.off('video-call:accepted', acceptedHandler);
+        if (this._rejectedHandler) {
+          socketService.off('video-call:rejected', this._rejectedHandler);
+        }
+      };
+      
+      // Listen for when someone rejects
+      const rejectedHandler = () => {
+        console.log('❌ [ChatPopup] Call rejected by recipient');
+        console.log('📞 [ChatPopup] Conversation ID:', this.conversation._id);
+        
+        // Clear timeout
+        if (this._callTimeout) {
+          clearTimeout(this._callTimeout);
+          this._callTimeout = null;
+        }
+        
+        // Hide calling modal
+        if (this.$refs.callingModal) {
+          console.log('🔕 [ChatPopup] Hiding calling modal');
+          this.$refs.callingModal.hide();
+        }
+        
+        // Reset cancel flag
+        this._callCancelled = false;
+        
+        // Cleanup listeners
+        socketService.off('video-call:rejected', rejectedHandler);
+        if (this._acceptedHandler) {
+          socketService.off('video-call:accepted', this._acceptedHandler);
+        }
+      };
+      
+      console.log('🎧 [ChatPopup] Setting up video-call:rejected listener');
+      socketService.on('video-call:accepted', acceptedHandler);
+      socketService.on('video-call:rejected', rejectedHandler);
+      
+      // Store handlers for cleanup
+      this._acceptedHandler = acceptedHandler;
+      this._rejectedHandler = rejectedHandler;
+    },
+
+    onVideoCallEnded() {
+      console.log('📵 [ChatPopup] Video call ended event received');
+      // Clear activeVideoCall in global manager
+      if (window.ChatPopupsManager) {
+        window.ChatPopupsManager.activeVideoCall = null;
+        console.log('✅ [ChatPopup] Cleared activeVideoCall in manager');
+      }
+    },
+
+    cancelCall() {
+      console.log('❌ [ChatPopup] Call cancelled by caller');
+      
+      // Prevent duplicate cancel emissions
+      if (this._callCancelled) {
+        console.log('⚠️ [ChatPopup] Call already cancelled, skipping');
+        return;
+      }
+      this._callCancelled = true;
+      
+      // Clear timeout if exists
+      if (this._callTimeout) {
+        clearTimeout(this._callTimeout);
+        this._callTimeout = null;
+      }
+      
+      socketService.emit('video-call:cancel', {
+        conversationId: this.conversation._id
+      });
+      if (this._acceptedHandler) {
+        socketService.off('video-call:accepted', this._acceptedHandler);
+        this._acceptedHandler = null;
+      }
+      if (this._rejectedHandler) {
+        socketService.off('video-call:rejected', this._rejectedHandler);
+        this._rejectedHandler = null;
+      }
+    },
+
+    onCallEnded() {
+      console.log('📵 [ChatPopup] Video call ended event received');
+      
+      // Clear activeVideoCall in global manager
+      if (window.ChatPopupsManager) {
+        window.ChatPopupsManager.activeVideoCall = null;
+        console.log('✅ [ChatPopup] Cleared activeVideoCall in manager');
+      }
+      
+      // Cleanup socket listeners
+      if (this._acceptedHandler) {
+        socketService.off('video-call:accepted', this._acceptedHandler);
+        this._acceptedHandler = null;
+      }
+      if (this._rejectedHandler) {
+        socketService.off('video-call:rejected', this._rejectedHandler);
+        this._rejectedHandler = null;
+      }
+    },
+
+    // DEPRECATED: Incoming call is now handled globally in ChatPopupsManager
+    // This method is kept for reference but no longer called
+    // handleIncomingCall({ conversationId, callerId, callerName, isGroupCall }) {
+    //   console.log('📞 [ChatPopup] Incoming call received:', { conversationId, callerId, callerName, isGroupCall });
+    //   ...
+    // }
+    
+    acceptIncomingVideoCall({ conversationId, callerId }) {
+      console.log('📹 [ChatPopup] Accepting incoming video call from manager');
+      // Start video call immediately without confirm (already confirmed in manager)
+      if (this.$refs.videoCallModal) {
+        this.$refs.videoCallModal.startCall();
+      } else {
+        console.error('❌ [ChatPopup] VideoCallModal ref not found');
+      }
     }
   },
 
@@ -1320,6 +1623,38 @@ export default {
       
       // If no category match, return current category
       return this.emojiData[this.activeCategory] || [];
+    },
+
+    recipientName() {
+      if (!this.conversation) return 'Người dùng';
+      if (this.conversation.isGroup) {
+        return this.conversation.groupName || 'Nhóm chat';
+      }
+      // Ưu tiên recipientName (từ Message.vue style)
+      if (this.conversation.recipientName) {
+        return this.conversation.recipientName;
+      }
+      // Fallback sang participant (từ ChatPopup style)
+      if (this.conversation.participant && this.conversation.participant.displayName) {
+        return this.conversation.participant.displayName;
+      }
+      return 'Người dùng';
+    },
+
+    recipientAvatar() {
+      if (!this.conversation) return null;
+      if (this.conversation.isGroup) {
+        return this.conversation.groupAvatar || null;
+      }
+      // Ưu tiên recipientAvatar (từ Message.vue style)
+      if (this.conversation.recipientAvatar) {
+        return this.conversation.recipientAvatar;
+      }
+      // Fallback sang participant (từ ChatPopup style)
+      if (this.conversation.participant && this.conversation.participant.profilePicture) {
+        return this.conversation.participant.profilePicture;
+      }
+      return null;
     }
   }
 }
@@ -1329,7 +1664,7 @@ export default {
 .chat-popup {
   position: fixed;
   bottom: 0;
-  right: 80px;
+  right: 80px; /* Default for first popup */
   width: 328px;
   height: 455px;
   background: white;
@@ -1339,6 +1674,19 @@ export default {
   flex-direction: column;
   z-index: 9999;
   transition: height 0.3s ease;
+}
+
+/* Position classes from parent */
+.chat-popup.popup-position-0 {
+  right: 80px;
+}
+
+.chat-popup.popup-position-1 {
+  right: 428px;
+}
+
+.chat-popup.popup-position-2 {
+  right: 776px;
 }
 
 .chat-popup.minimized {
@@ -1446,6 +1794,17 @@ export default {
 
 .action-btn:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+
+.video-call-btn {
+  color: #667eea;
+  transition: all 0.2s ease;
+}
+
+.video-call-btn:hover {
+  color: #764ba2;
+  transform: scale(1.1);
+  background: rgba(102, 126, 234, 0.1) !important;
 }
 
 .chat-body {

@@ -4,6 +4,7 @@ class SocketService {
   constructor() {
     this.socket = null;
     this.isConnected = false;
+    this._wrappedCallbacks = new Map(); // Store wrapped callbacks for cleanup
   }
 
   connect() {
@@ -26,18 +27,58 @@ class SocketService {
     });
 
     this.socket.on('connect', () => {
+      console.log('🔌 [SocketService] Socket connected');
       this.isConnected = true;
+      
+      // Re-register all listeners after reconnect
+      this._reregisterListeners();
+      
+      // ✅ Emit a custom event to notify that socket is ready
+      // This allows components to setup their listeners AFTER connection is established
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('socket-connected'));
+      }
     });
 
     this.socket.on('disconnect', () => {
+      console.log('🔌 [SocketService] Socket disconnected');
       this.isConnected = false;
     });
 
     this.socket.on('connect_error', (error) => {
+      console.error('🔌 [SocketService] Socket connect error:', error);
       this.isConnected = false;
+      
+      // ✅ If authentication error, clear token and disconnect
+      if (error.message && error.message.includes('Authentication')) {
+        console.error('❌ [SocketService] Authentication failed, clearing token');
+        localStorage.removeItem('token');
+        this.disconnect();
+        
+        // Redirect to login if needed
+        if (typeof window !== 'undefined' && window.location.pathname !== '/login') {
+          console.log('🔄 [SocketService] Redirecting to login...');
+          window.location.href = '/login';
+        }
+      }
     });
 
     return this.socket;
+  }
+  
+  _reregisterListeners() {
+    if (!this.socket || this._wrappedCallbacks.size === 0) {
+      return;
+    }
+    
+    console.log(`🔄 [SocketService] Re-registering ${this._wrappedCallbacks.size} listeners after reconnect`);
+    
+    // Re-register all wrapped callbacks
+    for (const [key, value] of this._wrappedCallbacks) {
+      const eventName = key.split('_')[0]; // Extract event name from key
+      this.socket.on(eventName, value.wrapped);
+      console.log(`🔄 [SocketService] Re-registered ${eventName} listener`);
+    }
   }
 
   disconnect() {
@@ -202,15 +243,85 @@ class SocketService {
   // Remove listeners
   off(event, callback) {
     if (this.socket) {
-      this.socket.off(event, callback);
+      if (callback) {
+        // Find and remove the wrapped callback matching the original
+        let removed = false;
+        for (const [key, value] of this._wrappedCallbacks) {
+          if (key.startsWith(`${event}_`) && value.original === callback) {
+            this.socket.off(event, value.wrapped);
+            this._wrappedCallbacks.delete(key);
+            console.log(`🔇 [SocketService] Removed ${event} listener`);
+            removed = true;
+            break;
+          }
+        }
+        if (!removed) {
+          console.warn(`⚠️ [SocketService] Listener for ${event} not found, trying direct removal`);
+          this.socket.off(event, callback);
+        }
+      } else {
+        // Remove all listeners for this event
+        this.socket.off(event);
+        // Clean up wrapped callbacks for this event
+        for (const [key] of this._wrappedCallbacks) {
+          if (key.startsWith(`${event}_`)) {
+            this._wrappedCallbacks.delete(key);
+          }
+        }
+        console.log(`🔇 [SocketService] Removed all ${event} listeners`);
+      }
     }
   }
 
   // Add generic on() method for any socket event
   on(event, callback) {
-    if (this.socket) {
-      console.log(`🎧 [SocketService] Setting up ${event} listener`);
-      this.socket.on(event, callback);
+    if (this.socket && callback && typeof callback === 'function') {
+      // Check if this exact callback is already registered by comparing function source
+      const callbackSource = callback.toString();
+      const callbackName = callback.name || 'anonymous';
+      let alreadyRegistered = false;
+      
+      for (const [key, value] of this._wrappedCallbacks) {
+        if (key.startsWith(`${event}_`) && value.original.toString() === callbackSource) {
+          console.log(`⏭️ [SocketService] Listener for ${event} (${callbackName}) already registered, skipping`);
+          alreadyRegistered = true;
+          break;
+        }
+      }
+      
+      if (alreadyRegistered) {
+        return;
+      }
+      
+      console.log(`🎧 [SocketService] Setting up ${event} listener (${callbackName})`);
+      
+      // Wrap callback with error handler
+      const wrappedCallback = (...args) => {
+        try {
+          console.log(`📨 [SocketService] Received ${event}:`, args);
+          callback(...args);
+        } catch (error) {
+          console.error(`❌ [SocketService] Error in ${event} listener:`, error);
+        }
+      };
+      
+      // Store wrapped callback for cleanup
+      const key = `${event}_${callbackName}_${Date.now()}`;
+      this._wrappedCallbacks.set(key, { wrapped: wrappedCallback, original: callback });
+      
+      this.socket.on(event, wrappedCallback);
+    } else {
+      console.warn(`⚠️ [SocketService] Invalid callback for ${event}`);
+    }
+  }
+
+  // Add generic emit() method for any socket event
+  emit(event, data) {
+    if (this.socket && this.getConnectionStatus()) {
+      console.log(`📤 [SocketService] Emitting ${event}:`, data);
+      this.socket.emit(event, data);
+    } else {
+      console.error(`❌ [SocketService] Cannot emit ${event} - socket not connected`);
     }
   }
 

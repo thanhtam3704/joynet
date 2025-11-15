@@ -278,7 +278,16 @@ export default {
   },
   methods: {
     logout() {
+      // ✅ Disconnect socket before logout
+      socketService.disconnect();
+      
+      // Clear all local storage
       localStorage.clear();
+      
+      // Clear store
+      this.$store.commit('clearUser');
+      
+      // Redirect to login
       this.$router.push("/login");
     },
     

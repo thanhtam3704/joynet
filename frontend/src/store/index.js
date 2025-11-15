@@ -402,6 +402,21 @@ export default createStore({
     SET_USER_LOADED(state, isLoaded) {
       state.isUserLoaded = isLoaded;
     },
+    // ✅ Add clearUser mutation
+    clearUser(state) {
+      state.user = {};
+      state.isUserLoaded = false;
+      state.conversations = [];
+      state.messages = [];
+      state.unreadCount = 0;
+      state.notifications = {
+        list: [],
+        unreadCount: 0,
+        loading: false,
+        hasMore: true,
+        currentPage: 1
+      };
+    },
     CACHE_USER(state, user) {
       if (user && user._id) {
         state.usersById = { ...state.usersById, [user._id]: user };
