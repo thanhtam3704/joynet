@@ -7,7 +7,7 @@
     <div class="notification-avatar">
       <img 
         v-if="notification.fromUser?.profilePicture" 
-        :src="`http://localhost:3000/uploads/user/${notification.fromUser.profilePicture}`"
+        :src="notification.fromUser.profilePicture"
         :alt="notification.fromUser.displayName"
       >
       <img 
@@ -46,7 +46,7 @@
       v-if="notification.postId && notification.postImage" 
       class="notification-preview"
     >
-      <img :src="`http://localhost:3000/uploads/posts/${notification.postImage}`" alt="Post preview">
+      <img :src="notification.postImage" alt="Post preview">
     </div>
     
     <!-- Unread indicator -->

@@ -12,7 +12,7 @@
         <template v-else>
           <img 
             v-if="conversation?.participant?.profilePicture" 
-            :src="`http://localhost:3000/uploads/user/${conversation.participant.profilePicture}`"
+            :src="conversation.participant.profilePicture || require('@/assets/defaultProfile.png')"
             alt="Avatar"
             class="chat-avatar"
           />
@@ -99,7 +99,7 @@
           >
             <img 
               v-if="!isOwnMessage(message) && message.sender.profilePicture"
-              :src="`http://localhost:3000/uploads/user/${message.sender.profilePicture}`"
+              :src="message.sender.profilePicture || require('@/assets/defaultProfile.png')"
               class="message-avatar"
             />
             <img 
@@ -111,7 +111,7 @@
             <div class="message-with-reactions">
               <div 
                 class="message-bubble" 
-                :class="{ 'own-bubble': isOwnMessage(message) }"
+                :class="{ 'own-bubble': isOwnMessage(message), 'call-message': isCallMessage(message) }"
                 @mousedown="startLongPress($event, message)"
                 @mouseup="cancelLongPress"
                 @mouseleave="cancelLongPress"
@@ -128,15 +128,26 @@
                 </button>
 
                 <div v-if="message.messageType === 'image'" class="message-image">
-                  <img :src="`http://localhost:3000/uploads/${message.file}`" alt="Image" />
+                  <img :src="message.file" alt="Image" />
                 </div>
                 <div v-else-if="message.messageType === 'file'" class="message-file" @click="downloadFile(message)">
                   <i class="material-icons">attach_file</i>
                   <span>{{ message.originalFileName || message.file }}</span>
                   <i class="material-icons download-icon">download</i>
                 </div>
-                <p v-else class="message-text">{{ message.content }}</p>
-                <span class="message-time">{{ formatTime(message.createdAt) }}</span>
+                
+                <!-- Call Message with Icon -->
+                <div v-else-if="isCallMessage(message)" class="call-message-content">
+                  <i class="material-icons call-icon" :class="{ 'missed': isMissedCallMessage(message) }">videocam</i>
+                  <span style="white-space: pre-line;">{{ getCallMessageDisplay(message).replace('📞', '').replace('🎥', '').trim() }}</span>
+                  <span class="message-time">{{ formatTime(message.createdAt) }}</span>
+                </div>
+                
+                <!-- Regular Message -->
+                <p v-else class="message-text">
+                  {{ message.content }}
+                  <span class="message-time">{{ formatTime(message.createdAt) }}</span>
+                </p>
               </div>
               
               <!-- Message Reactions Summary - BÊN NGOÀI BUBBLE -->
@@ -288,6 +299,7 @@
     </div>
 
     <!-- Edit Message Modal -->
+    <teleport to="body">
     <div v-if="showEditModal" class="edit-modal-overlay" @click="cancelEdit">
       <div class="edit-modal" @click.stop>
         <div class="edit-modal-header">
@@ -310,8 +322,10 @@
         </div>
       </div>
     </div>
+    </teleport>
 
     <!-- Delete Confirmation Modal -->
+    <teleport to="body">
     <div v-if="showDeleteModal" class="edit-modal-overlay" @click="showDeleteModal = false">
       <div class="edit-modal delete-confirm-modal" @click.stop>
         <div class="edit-modal-header">
@@ -329,6 +343,7 @@
         </div>
       </div>
     </div>
+    </teleport>
     
     <!-- Group Members Modal -->
     <teleport to="body">
@@ -722,6 +737,8 @@ export default {
         message.reactions = []
       }
       
+      // Messages are displayed via getCallMessageDisplay() in template
+      
       console.log('✅ [ChatPopup] Adding message with avatar:', message.sender?.profilePicture);
       
       // Thêm tin nhắn mới vào danh sách
@@ -739,6 +756,11 @@ export default {
     },
 
     async markConversationAsRead() {
+      // Skip if temporary conversation (not saved to DB yet)
+      if (!this.conversation?._id || this.conversation._id.startsWith('temp_')) {
+        return;
+      }
+      
       try {
         await MessageAPI.markAsRead(this.conversation._id)
         // Cập nhật lại store để refresh unread count
@@ -751,27 +773,36 @@ export default {
     async loadMessages() {
       if (!this.conversation?._id) return
       
+      // Skip loading for temporary conversations (not saved to DB yet)
+      if (this.conversation._id.startsWith('temp_')) {
+        this.messages = [];
+        this.loading = false;
+        return;
+      }
+      
       this.loading = true
       try {
         const response = await MessageAPI.getMessages(this.conversation._id)
         if (response.status === 200) {
-          // Map messages với reactions đúng format
-          this.messages = (response.data.messages || []).map(msg => ({
-            ...msg,
-            reactions: (msg.reactions || []).map(r => {
-              const user = r.user || {}
-              const userName = user.displayName || 
-                              (user.email ? user.email.split('@')[0] : null) ||
-                              'Unknown User'
-              
-              return {
-                userId: user._id || r.user,
-                userName: userName,
-                userAvatar: user.profilePicture || null,
-                emoji: r.emoji
-              }
-            })
-          }))
+          // Map messages với reactions đúng format (no transformation here, done in template via getCallMessageDisplay)
+          this.messages = (response.data.messages || []).map(msg => {
+            return {
+              ...msg,
+              reactions: (msg.reactions || []).map(r => {
+                const user = r.user || {}
+                const userName = user.displayName || 
+                                (user.email ? user.email.split('@')[0] : null) ||
+                                'Unknown User'
+                
+                return {
+                  userId: user._id || r.user,
+                  userName: userName,
+                  userAvatar: user.profilePicture || null,
+                  emoji: r.emoji
+                }
+              })
+            };
+          })
           
           // Scroll to bottom sau khi load - với nhiều lần thử
           this.$nextTick(() => {
@@ -824,7 +855,7 @@ export default {
           _id: 'temp-' + Date.now(),
           content: tempMessageContent,
           messageType: messageData.messageType,
-          file: tempFile ? tempFile.name : null,
+          file: tempFile ? (tempFile.type.startsWith('image/') ? URL.createObjectURL(tempFile) : tempFile.name) : null,
           originalFileName: tempFile ? tempFile.name : null,
           sender: {
             _id: currentUser._id,
@@ -833,7 +864,8 @@ export default {
           },
           readBy: [{ user: currentUser._id }],
           createdAt: new Date().toISOString(),
-          isTemp: true
+          isTemp: true,
+          isTempPreview: tempFile ? tempFile.type.startsWith('image/') : false // Flag để biết cần revoke URL
         }
 
         // Thêm tin nhắn tạm vào danh sách
@@ -848,9 +880,14 @@ export default {
         
         if (response.status === 200 || response.status === 201) {
           // Socket sẽ tự động thêm tin nhắn qua handleNewMessage
-          // Chỉ cần xóa temp message
+          // Xóa temp message và revoke blob URL nếu có
           const tempIndex = this.messages.findIndex(m => m._id === tempMessage._id)
           if (tempIndex !== -1) {
+            const temp = this.messages[tempIndex]
+            // Revoke blob URL để giải phóng memory
+            if (temp.isTempPreview && temp.file) {
+              URL.revokeObjectURL(temp.file)
+            }
             this.messages.splice(tempIndex, 1)
           }
           
@@ -979,13 +1016,100 @@ export default {
     },
 
     isOwnMessage(message) {
-      if (!message || !message.sender || !this.currentUserId) return false
+      if (!message) return false;
       
-      const senderId = message.sender._id || message.sender
-      const currentId = this.currentUserId
+      // ✅ Ưu tiên check field isMyMessage (đã được set đặc biệt cho call messages)
+      if (message.hasOwnProperty('isMyMessage')) {
+        return message.isMyMessage;
+      }
+      
+      // ✅ Fallback: check theo sender ID
+      if (!message.sender || !this.currentUserId) return false;
+      
+      const senderId = message.sender._id || message.sender;
+      const currentId = this.currentUserId;
       
       // So sánh cả dạng string và object
-      return senderId?.toString() === currentId?.toString()
+      return senderId?.toString() === currentId?.toString();
+    },
+
+    isCallMessage(message) {
+      if (!message || !message.content) return false;
+      const content = String(message.content);
+      return content.includes('📞') || content.includes('🎥📞') || 
+             content.includes('CALL_CANCELLED') || content.includes('CALL_MISSED') || 
+             content.includes('CALL_ENDED');
+    },
+
+    isMissedCallMessage(message) {
+      if (!message || !message.content) return false;
+      const content = String(message.content);
+      return content.includes('CALL_MISSED') || content.includes('CALL_NO_ANSWER') ||
+             content.includes('📞 Cuộc gọi nhỡ') || 
+             content.includes('📞 Không có phản hồi') ||
+             content.includes('📞 Bạn đã bỏ lỡ') ||
+             content.startsWith('📞 CALL_MISSED_GROUP_USER|');
+    },
+
+    // Transform call message content based on viewer
+    getCallMessageDisplay(message) {
+      if (!message || !message.content) return '';
+      const content = String(message.content);
+      const isMyMessage = message.sender?._id?.toString() === this.currentUserId?.toString();
+      
+      // 1-1 CALL_CANCELLED (caller cancelled before anyone answered)
+      // Caller: "Bạn đã hủy cuộc gọi"
+      // Receiver: "Cuộc gọi nhỡ"
+      if (content === '📞 CALL_CANCELLED') {
+        return isMyMessage ? '📞 Bạn đã hủy cuộc gọi' : '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Group CALL_CANCELLED
+      if (content === '📞 CALL_CANCELLED_GROUP') {
+        return isMyMessage ? '📞 Bạn đã hủy cuộc gọi nhóm' : '📞 Cuộc gọi nhóm đã bị bỏ lỡ';
+      }
+      
+      // 1-1 CALL_NO_ANSWER (timeout or reject - no one answered)
+      // Caller: "Không có phản hồi"  
+      // Receiver: "Cuộc gọi nhỡ"
+      if (content === '📞 CALL_NO_ANSWER') {
+        return isMyMessage ? '📞 Không có phản hồi' : '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Legacy: CALL_MISSED (old code, should not appear anymore)
+      if (content === '📞 CALL_MISSED') {
+        return '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Group CALL_MISSED
+      if (content === '📞 CALL_MISSED_GROUP') {
+        return '📞 Cuộc gọi nhóm đã bị bỏ lỡ';
+      }
+      
+      // Group CALL_MISSED for specific user (didn't join)
+      if (content.startsWith('📞 CALL_MISSED_GROUP_USER|')) {
+        const parts = content.split('|');
+        const callerName = parts[1] || 'Unknown';
+        return `📞 Bạn đã bỏ lỡ cuộc gọi nhóm từ ${callerName}`;
+      }
+      
+      // CALL_ENDED - parse duration
+      if (content.startsWith('🎥📞 CALL_ENDED|')) {
+        const parts = content.split('|');
+        const duration = parts[1] || '0 giây';
+        return `🎥📞 Cuộc gọi video kết thúc\nThời lượng: ${duration}`;
+      }
+      
+      // CALL_ENDED_GROUP - parse duration and participants
+      if (content.startsWith('🎥📞 CALL_ENDED_GROUP|')) {
+        const parts = content.split('|');
+        const duration = parts[1] || '0 giây';
+        const joinedCount = parts[2] || '0';
+        return `🎥📞 Cuộc gọi nhóm kết thúc\nThời lượng: ${duration}\n${joinedCount} người đã tham gia`;
+      }
+      
+      // Return original content if no transformation needed
+      return content;
     },
 
     triggerFileInput() {
@@ -1183,6 +1307,20 @@ export default {
     downloadFile(message) {
       if (!message.file) return;
       
+      // Check if it's a Cloudinary URL
+      if (message.file.startsWith('http://') || message.file.startsWith('https://')) {
+        // Direct download from Cloudinary
+        const link = document.createElement('a');
+        link.href = message.file;
+        link.download = message.originalFileName || 'file';
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      
+      // Local file - use backend endpoint
       const token = localStorage.getItem('token');
       const filename = message.file;
       const downloadUrl = `http://localhost:3000/api/messages/download/${filename}`;
@@ -1254,9 +1392,8 @@ export default {
     canEdit(message) {
       if (!message || message.messageType !== 'text') return false;
       if (message.readBy && message.readBy.length > 1) return false;
-      // Don't allow editing system messages (video call, etc.)
-      if (message.content && message.content.includes('📞 Đã bỏ lỡ cuộc gọi video')) return false;
-      if (message.content && message.content.includes('Cuộc gọi video')) return false;
+      // Don't allow editing call messages
+      if (this.isCallMessage(message)) return false;
       return true;
     },
 
@@ -1391,13 +1528,6 @@ export default {
 
     // Video Call Methods
     startVideoCall() {
-      console.log('📞 [ChatPopup] Starting video call...');
-      console.log('📞 [ChatPopup] Socket connected:', socketService.getConnectionStatus());
-      console.log('📞 [ChatPopup] Conversation:', this.conversation);
-      console.log('📞 [ChatPopup] Computed recipientName:', this.recipientName);
-      console.log('📞 [ChatPopup] Computed recipientAvatar:', this.recipientAvatar);
-      console.log('📞 [ChatPopup] Conversation.participant:', this.conversation?.participant);
-      console.log('📞 [ChatPopup] Conversation.recipientName:', this.conversation?.recipientName);
       
       // Show calling modal instead of immediately starting video
       if (this.$refs.callingModal) {
@@ -1491,9 +1621,21 @@ export default {
       };
       
       // Listen for when someone rejects
-      const rejectedHandler = () => {
-        console.log('❌ [ChatPopup] Call rejected by recipient');
+      const rejectedHandler = ({ userId, userName }) => {
+        console.log('❌ [ChatPopup] Call rejected by:', userId, userName);
         console.log('📞 [ChatPopup] Conversation ID:', this.conversation._id);
+        console.log('📞 [ChatPopup] Is group call:', this.conversation.isGroup);
+        
+        // In GROUP CALL: Don't hide modal or cleanup listeners
+        // Wait for either: someone accepts OR timeout
+        if (this.conversation.isGroup) {
+          console.log('👥 [ChatPopup] Group call - continuing to wait for other participants');
+          // Just log, don't hide modal or remove listeners
+          return;
+        }
+        
+        // In 1-1 CALL: Reject means call is over
+        console.log('👤 [ChatPopup] 1-1 call rejected - ending call');
         
         // Clear timeout
         if (this._callTimeout) {
@@ -1919,6 +2061,23 @@ export default {
   overflow-wrap: break-word;
 }
 
+.message-bubble.call-message {
+  background: transparent !important;
+  border: 1px solid rgba(102, 126, 234, 0.3);
+  padding: 0.5rem 0.65rem;
+  box-shadow: none;
+}
+
+.message-bubble.call-message.own-bubble {
+  border-color: rgba(102, 126, 234, 0.4);
+}
+
+.message-bubble.call-message:hover {
+  background: rgba(0, 0, 0, 0.02) !important;
+  transform: none;
+  box-shadow: none;
+}
+
 .message-bubble:hover .message-more-btn {
   opacity: 1;
   visibility: visible;
@@ -2007,6 +2166,47 @@ export default {
   opacity: 0.7;
   margin-top: 0.25rem;
   display: block;
+}
+
+.call-message-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #667eea;
+  font-size: 0.8125rem;
+  font-weight: 500;
+}
+
+.call-message-content .call-icon {
+  font-size: 16px;
+  color: #667eea;
+}
+
+.call-message-content .call-icon.missed {
+  color: #ef4444;
+}
+
+.call-message-content span {
+  color: inherit;
+}
+
+.call-message-content .message-time {
+  color: #94a3b8;
+  font-size: 0.6875rem;
+  margin-left: auto;
+  margin-top: 0;
+}
+
+.message-bubble:not(.own-bubble) .call-message-content {
+  color: #1e293b;
+}
+
+.message-bubble:not(.own-bubble) .call-message-content .call-icon {
+  color: #667eea;
+}
+
+.message-bubble:not(.own-bubble) .call-message-content .call-icon.missed {
+  color: #ef4444;
 }
 
 .message-image img {
@@ -2284,11 +2484,11 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 10002;
 }
 
 .edit-modal {

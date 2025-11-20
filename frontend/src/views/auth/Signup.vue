@@ -109,7 +109,8 @@ export default {
     };
   },
   mounted() {
-    // Clear any existing user state when visiting signup page
+    // Clear any existing user state and token when visiting signup page
+    localStorage.removeItem('token');
     this.$store.commit('clearUser');
     
     // Kiểm tra URL params để xử lý Google OAuth callback
@@ -391,7 +392,8 @@ export default {
 
 .input {
   position: relative;
-  margin-bottom: 1.75rem;
+  display: block; /* ensure margin applies to wrapper */
+  margin-bottom: 1.25rem; /* slightly tighter but consistent spacing */
 
   &__field {
     box-sizing: border-box;
@@ -421,6 +423,24 @@ export default {
     }
 
     &:not(:placeholder-shown) {
+      & + .input__label {
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--gray-600);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
+      }
+    }
+
+    /* ✅ XỬ LÝ AUTOFILL - Label tự động lên khi browser nhớ mật khẩu */
+    &:-webkit-autofill,
+    &:-webkit-autofill:hover,
+    &:-webkit-autofill:focus {
+      -webkit-box-shadow: 0 0 0 1000px white inset;
+      -webkit-text-fill-color: var(--gray-900);
+      transition: background-color 5000s ease-in-out 0s;
+      
       & + .input__label {
         transform: translate(-0.25rem, -50%) scale(0.85);
         color: var(--gray-600);
@@ -491,7 +511,7 @@ export default {
 .warn {
   color: var(--error);
   font-size: 0.875rem;
-  margin: -0.75rem 0 1rem 0;
+  margin: 0.5rem 0 1rem 0; /* remove negative margin to avoid clipping */
   display: flex;
   align-items: center;
   gap: 0.5rem;

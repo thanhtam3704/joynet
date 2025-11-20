@@ -77,6 +77,11 @@ const MessageSchema = new mongoose.Schema({
       type: Date,
       default: Date.now
     }
+  }],
+  // Field để giới hạn ai được xem message (dùng cho group call ended)
+  visibleTo: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }]
 }, {
   timestamps: true

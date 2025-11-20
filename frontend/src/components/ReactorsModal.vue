@@ -141,9 +141,11 @@ export default {
       }
     },
     getProfilePicture(user) {
-      return user.profilePicture
-        ? `http://localhost:3000/uploads/user/${user.profilePicture}`
-        : "https://via.placeholder.com/40";
+      if (!user.profilePicture) return "https://via.placeholder.com/40";
+      if (user.profilePicture.startsWith('http://') || user.profilePicture.startsWith('https://')) {
+        return user.profilePicture;
+      }
+      return user.profilePicture || require('@/assets/defaultProfile.png');
     },
     getReactionEmoji(reactionType) {
       const emojiMap = {

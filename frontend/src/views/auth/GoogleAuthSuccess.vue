@@ -15,7 +15,7 @@ export default {
     this.processGoogleAuth();
   },
   methods: {
-    processGoogleAuth() {
+    async processGoogleAuth() {
       // Lấy token từ URL params
       const urlParams = new URLSearchParams(window.location.search);
       const token = urlParams.get('token');
@@ -28,9 +28,20 @@ export default {
       }
       
       if (token) {
-        // Lưu token và chuyển hướng
-        localStorage.setItem('token', token);
-        this.$router.push('/home');
+        try {
+          // Lưu token
+          localStorage.setItem('token', token);
+          
+          // Fetch user info và cập nhật store
+          await this.$store.dispatch('fetchUser');
+          
+          // Chuyển hướng về home
+          this.$router.push('/home');
+        } catch (error) {
+          console.error('Failed to fetch user info:', error);
+          // Vẫn chuyển về home, user info sẽ được load lại
+          this.$router.push('/home');
+        }
       } else {
         // Không có token, chuyển về login
         this.$router.push('/login');

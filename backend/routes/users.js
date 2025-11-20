@@ -4,6 +4,24 @@ const Notification = require('../models/Notification.js')
 const { createNotification } = require('./notifications.js')
 const sanitize = require('mongo-sanitize')
 const mongoose = require('mongoose')
+const multer = require('multer')
+const cloudinary = require('../config/cloudinary')
+
+// Cấu hình Multer để lưu file vào memory
+const storage = multer.memoryStorage()
+
+const upload = multer({ 
+  storage: storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true)
+    } else {
+      cb(new Error('Invalid file type'), false)
+    }
+  }
+})
 
 // Middleware verify token
 const verifyToken = (req, res, next) => {
@@ -429,11 +447,6 @@ router.put('/:id/unfollow', async (req, res) => {
         const updatedUser = await User.findById(req.params.id);
         const stillFollowing = updatedUser.followers.map(f => f.toString()).includes(req.body.userId);
         
-        console.log('✅ Updated followers/followings arrays', {
-          stillFollowing: stillFollowing,
-          newFollowersCount: updatedUser.followers.length,
-          updatedFollowers: updatedUser.followers
-        });
         
         // Nếu là tài khoản riêng tư, xóa cả follow request record
         if (user.isPrivate) {
@@ -508,6 +521,68 @@ router.put('/:id/edit', async (req, res) => {
     return res.status(200).json({ msg: 'user has been updated' })
   } catch (err) {
     return res.status(500).json(err)
+  }
+})
+
+//UPLOAD AVATAR
+router.post('/:id/upload-avatar', verifyToken, upload.single('avatar'), async (req, res) => {
+  try {
+    const userId = req.params.id;
+    
+    // Kiểm tra quyền
+    if (req.user.id !== userId) {
+      return res.status(403).json({ error: 'Không có quyền cập nhật avatar' });
+    }
+    
+    if (!req.file) {
+      return res.status(400).json({ error: 'Vui lòng chọn ảnh' });
+    }
+    
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'Người dùng không tồn tại' });
+    }
+    
+    // Xóa ảnh cũ trên Cloudinary nếu có
+    if (user.profilePicture && user.profilePicture.includes('cloudinary.com')) {
+      try {
+        const publicId = user.profilePicture.split('/').slice(-2).join('/').split('.')[0];
+        await cloudinary.uploader.destroy(publicId);
+      } catch (deleteErr) {
+        console.error('Error deleting old avatar:', deleteErr);
+      }
+    }
+    
+    // Upload lên Cloudinary từ buffer
+    const uploadStream = () => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'social-web/avatars',
+            transformation: [{ width: 500, height: 500, crop: 'fill' }]
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+    };
+    
+    const result = await uploadStream();
+    const avatarUrl = result.secure_url;
+    
+    // Cập nhật URL ảnh mới
+    await user.updateOne({ $set: { profilePicture: avatarUrl } });
+    
+    return res.status(200).json({ 
+      message: 'Upload avatar thành công',
+      profilePicture: avatarUrl 
+    });
+  } catch (err) {
+    console.error('Upload avatar error:', err);
+    return res.status(500).json({ error: 'Lỗi upload avatar' });
   }
 })
 

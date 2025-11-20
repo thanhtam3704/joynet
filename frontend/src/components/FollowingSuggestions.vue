@@ -40,7 +40,7 @@
             <div class="user-avatar-wrapper">
               <img 
                 v-if="user.profilePicture" 
-                :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+                :src="user.profilePicture"
                 :alt="user.displayName"
                 class="user-avatar"
               />

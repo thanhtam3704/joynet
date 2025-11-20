@@ -46,7 +46,7 @@
                 class="member-chip"
               >
                 <img 
-                  :src="member.profilePicture ? `http://localhost:3000/uploads/user/${member.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                  :src="member.profilePicture || require('@/assets/defaultProfile.png')" 
                   :alt="member.displayName"
                 />
                 <span>{{ member.displayName || member.email }}</span>
@@ -57,9 +57,14 @@
 
           <!-- Friends List -->
           <div class="friends-list">
-            <div v-if="loading" class="loading">
-              <div class="spinner"></div>
-              <span>Đang tải danh sách bạn bè...</span>
+            <div v-if="loading && friends.length === 0" class="loading-skeleton">
+              <div class="friend-skeleton" v-for="i in 8" :key="'skeleton-' + i">
+                <Skeletor circle width="48" height="48" />
+                <div class="skeleton-text">
+                  <Skeletor width="120" height="14" />
+                  <Skeletor width="80" height="10" style="margin-top: 4px;" />
+                </div>
+              </div>
             </div>
 
             <div v-else-if="friends.length === 0" class="empty-state">
@@ -73,7 +78,7 @@
               <p>Không tìm thấy "{{ searchQuery }}"</p>
             </div>
 
-            <div v-else class="friends-scroll">
+            <div v-else class="friends-scroll" @scroll="handleScroll">
               <div 
                 v-for="friend in filteredFriends" 
                 :key="friend._id"
@@ -82,7 +87,7 @@
                 @click="toggleMember(friend)"
               >
                 <img 
-                  :src="friend.profilePicture ? `http://localhost:3000/uploads/user/${friend.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                  :src="friend.profilePicture || require('@/assets/defaultProfile.png')" 
                   :alt="friend.displayName"
                 />
                 <div class="friend-info">
@@ -92,6 +97,21 @@
                 <i class="material-icons check-icon">
                   {{ isSelected(friend._id) ? 'check_circle' : 'radio_button_unchecked' }}
                 </i>
+              </div>
+              
+              <!-- Loading more indicator -->
+              <div v-if="loadingMore" class="loading-more">
+                <div class="friend-skeleton" v-for="i in 3" :key="'loading-' + i">
+                  <Skeletor circle width="48" height="48" />
+                  <div class="skeleton-text">
+                    <Skeletor width="120" height="14" />
+                  </div>
+                </div>
+              </div>
+              
+              <!-- End of list indicator -->
+              <div v-else-if="!hasMore && friends.length > 0" class="no-more">
+                <span>Đã hiển thị tất cả người theo dõi</span>
               </div>
             </div>
           </div>
@@ -113,18 +133,24 @@
 </template>
 
 <script>
+import { Skeletor } from 'vue-skeletor';
 import MessageAPI from '@/api/messages';
 import GroupMessageAPI from '@/api/groupMessages';
 
 export default {
   name: 'CreateGroupModal',
+  components: { Skeletor },
   data() {
     return {
       groupName: '',
       searchQuery: '',
       friends: [],
       selectedMembers: [],
-      loading: false
+      loading: false,
+      loadingMore: false,
+      limit: 20,
+      offset: 0,
+      hasMore: true
     };
   },
   computed: {
@@ -145,22 +171,49 @@ export default {
   },
   methods: {
     async loadFriends() {
-      this.loading = true;
+      if (this.loading || this.loadingMore || !this.hasMore) return;
+      
+      this.loading = this.offset === 0;
+      this.loadingMore = this.offset > 0;
+      
+      console.log(`🔄 Loading friends offset ${this.offset}...`);
+      
       try {
-        console.log('🔍 Loading friends...');
-        const response = await MessageAPI.getFriends();
-        console.log('📥 Friends response:', response);
-        console.log('📥 Friends data:', response.data);
+        const response = await MessageAPI.getFriends(this.limit, this.offset);
+        console.log('📥 Friends response:', response.data);
         
         if (response.status === 200) {
-          this.friends = response.data || [];
-          console.log('✅ Friends loaded:', this.friends.length, 'friends');
+          const { users = [], total = 0, hasMore } = response.data;
+          console.log(`✅ Got ${users.length} friends (total: ${total})`);
+          
+          // Lọc trùng lặp
+          const existingIds = new Set(this.friends.map(f => f._id));
+          const uniqueNewFriends = users.filter(f => !existingIds.has(f._id));
+          
+          this.friends = [...this.friends, ...uniqueNewFriends];
+          this.hasMore = hasMore;
+          this.offset += users.length;
+          
+          console.log('✅ Total friends loaded:', this.friends.length);
         }
       } catch (error) {
         console.error('❌ Load friends error:', error);
-        console.error('Error response:', error.response);
       } finally {
         this.loading = false;
+        this.loadingMore = false;
+      }
+    },
+    
+    handleScroll(event) {
+      const element = event.target;
+      const scrollTop = element.scrollTop;
+      const scrollHeight = element.scrollHeight;
+      const clientHeight = element.clientHeight;
+      
+      // Khi scroll gần đến cuối (còn 100px)
+      if (scrollTop + clientHeight >= scrollHeight - 100) {
+        console.log('🔄 Loading more friends...');
+        this.loadFriends();
       }
     },
     
@@ -399,10 +452,18 @@ export default {
 .friends-list {
   flex: 1;
   min-height: 300px;
-  max-height: 400px;
+  max-height: 500px;
   border: 2px solid var(--gray-200);
   border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
+}
+
+.friends-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .loading, .empty-state {
@@ -428,6 +489,26 @@ export default {
   to { transform: rotate(360deg); }
 }
 
+.loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.friend-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+}
+
+.skeleton-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
 .empty-state i {
   font-size: 3rem;
   opacity: 0.3;
@@ -439,9 +520,20 @@ export default {
   margin-top: 0.5rem;
 }
 
-.friends-scroll {
-  overflow-y: auto;
-  max-height: 400px;
+.loading-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem;
+}
+
+.no-more {
+  text-align: center;
+  padding: 1rem;
+  color: var(--gray-500);
+  font-size: 0.75rem;
+  font-style: italic;
+  border-top: 1px solid var(--gray-100);
 }
 
 .friend-item {

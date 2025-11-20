@@ -63,7 +63,7 @@
             <template v-else>
               <img 
                 v-if="conversation && conversation.recipientAvatar"
-                :src="getAvatarUrl(conversation.recipientAvatar)" 
+                :src="conversation.recipientAvatar" 
                 alt="Avatar"
                 @error="onAvatarError"
               />
@@ -193,10 +193,10 @@ export default {
     },
     getAvatarUrl(avatarPath) {
       if (!avatarPath) return '';
-      if (typeof avatarPath === 'string' && avatarPath.startsWith('http')) {
-        return avatarPath; // Google OAuth or external
+      if (typeof avatarPath === 'string' && (avatarPath.startsWith('http://') || avatarPath.startsWith('https://'))) {
+        return avatarPath; // Google OAuth, Cloudinary or external
       }
-      return `http://localhost:3000/uploads/user/${avatarPath}`;
+      return avatarPath || require('@/assets/defaultProfile.png');
     },
     onAvatarError(event) {
       event.target.src = require('@/assets/defaultProfile.png');
@@ -292,6 +292,8 @@ export default {
   display: flex;
   flex-direction: column;
   height: 100%;
+  min-height: 0; /* Quan trọng cho flex child */
+  overflow: hidden; /* Ngăn container tràn */
 }
 
 /* Tab Bar */
@@ -347,7 +349,9 @@ export default {
 
 .conversation-list {
   flex: 1;
+  min-height: 0; /* Quan trọng cho flex child có scroll */
   overflow-y: auto;
+  overflow-x: hidden;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(250, 250, 250, 0.95) 100%);
   
   &::-webkit-scrollbar {

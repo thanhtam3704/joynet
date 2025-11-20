@@ -16,7 +16,7 @@
 
           <!-- Add Member Section (All members can add, not just admins) -->
           <div v-if="members.length < 200" class="add-member-section">
-            <button class="btn-add-member" @click="showAddMemberUI = !showAddMemberUI">
+            <button class="btn-add-member" @click="toggleAddMemberUI">
               <i class="material-icons">person_add</i>
               <span>Thêm thành viên ({{ members.length }}/200)</span>
             </button>
@@ -32,7 +32,19 @@
                 />
               </div>
 
-              <div v-if="filteredAvailableFriends.length > 0" class="available-friends">
+              <!-- Loading Skeleton -->
+              <div v-if="isLoadingFriends" class="available-friends skeleton-container">
+                <div v-for="i in 3" :key="i" class="friend-item skeleton-item">
+                  <div class="skeleton-avatar"></div>
+                  <div class="friend-info">
+                    <div class="skeleton-text skeleton-name"></div>
+                  </div>
+                  <div class="skeleton-icon"></div>
+                </div>
+              </div>
+              
+              <!-- Loaded Friends -->
+              <div v-else-if="filteredAvailableFriends.length > 0" class="available-friends">
                 <div 
                   v-for="friend in filteredAvailableFriends" 
                   :key="friend._id"
@@ -40,7 +52,7 @@
                   @click="addMember(friend._id)"
                 >
                   <img 
-                    :src="friend.profilePicture ? `http://localhost:3000/uploads/user/${friend.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                    :src="friend.profilePicture || require('@/assets/defaultProfile.png')" 
                     :alt="friend.displayName"
                   />
                   <div class="friend-info">
@@ -49,6 +61,8 @@
                   <i class="material-icons add-icon">add_circle</i>
                 </div>
               </div>
+              
+              <!-- Empty State -->
               <div v-else class="empty-state-small">
                 <span>{{ searchQuery ? 'Không tìm thấy' : 'Tất cả bạn bè đã ở trong nhóm' }}</span>
               </div>
@@ -76,7 +90,7 @@
                   @click="confirmTransferOwnership(member)"
                 >
                   <img 
-                    :src="member.profilePicture ? `http://localhost:3000/uploads/user/${member.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                    :src="member.profilePicture || require('@/assets/defaultProfile.png')" 
                     :alt="member.displayName"
                   />
                   <div class="member-select-info">
@@ -104,7 +118,7 @@
               :class="{ 'creator': isCreator(member._id) }"
             >
               <img 
-                :src="member.profilePicture ? `http://localhost:3000/uploads/user/${member.profilePicture}` : require('@/assets/defaultProfile.png')" 
+                :src="member.profilePicture || require('@/assets/defaultProfile.png')" 
                 :alt="member.displayName"
               />
               
@@ -228,6 +242,8 @@ export default {
       showAddMemberUI: false,
       searchQuery: '',
       availableFriends: [],
+      isLoadingFriends: false,
+      contactsLoaded: false,
       memberToRemove: null,
       showLeaveConfirm: false,
       showTransferOwnershipUI: false,
@@ -280,15 +296,38 @@ export default {
       });
     },
 
+    toggleAddMemberUI() {
+      this.showAddMemberUI = !this.showAddMemberUI;
+      
+      // Lazy load friends khi mở UI lần đầu
+      if (this.showAddMemberUI && !this.contactsLoaded && this.availableFriends.length === 0) {
+        console.log('📋 [GroupMembersModal] Loading friends on demand...');
+        this.loadAvailableFriends();
+      }
+    },
+
     async loadAvailableFriends() {
       try {
+        this.isLoadingFriends = true;
         const response = await MessageAPI.getFriends();
-        if (response.status === 200) {
+        console.log('📋 [GroupMembersModal] Friends response:', response.data);
+        
+        if (response.status === 200 && response.data) {
+          // Backend trả về { users: [...], total, hasMore }
+          const friendsList = response.data.users || response.data || [];
           const memberIds = this.members.map(m => m._id || m);
-          this.availableFriends = response.data.filter(f => !memberIds.includes(f._id));
+          
+          console.log('📋 [GroupMembersModal] Total friends:', friendsList.length);
+          console.log('📋 [GroupMembersModal] Current members:', memberIds);
+          
+          this.availableFriends = friendsList.filter(f => !memberIds.includes(f._id));
+          
+          console.log('📋 [GroupMembersModal] Available to add:', this.availableFriends.length);
         }
       } catch (error) {
         console.error('Load friends error:', error);
+      } finally {
+        this.isLoadingFriends = false;
       }
     },
 
@@ -457,10 +496,8 @@ export default {
       await this.refreshConversation();
     }
     
-    // Load available friends if user is admin
-    if (this.isAdmin) {
-      this.loadAvailableFriends();
-    }
+    // Friends will be loaded on-demand when user clicks "Thêm thành viên" button
+    console.log('💡 [GroupMembersModal] Friends will load when needed');
   }
 };
 </script>
@@ -674,6 +711,55 @@ export default {
   padding: 1rem;
   color: var(--gray-500);
   font-size: 0.875rem;
+}
+
+/* Skeleton Loading */
+.skeleton-container {
+  pointer-events: none;
+}
+
+.skeleton-item {
+  animation: none !important;
+}
+
+.skeleton-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-text {
+  height: 16px;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-name {
+  width: 120px;
+  margin-bottom: 0.25rem;
+}
+
+.skeleton-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .members-list {

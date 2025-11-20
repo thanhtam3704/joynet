@@ -3,6 +3,16 @@ const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const User = require('../models/User');
 const sanitize = require('mongo-sanitize');
+const multer = require('multer');
+const cloudinary = require('../config/cloudinary');
+
+// Cấu hình Multer memory storage
+const messageStorage = multer.memoryStorage();
+
+const uploadMessage = multer({ 
+  storage: messageStorage,
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB
+});
 
 // Middleware để verify token
 const verifyToken = (req, res, next) => {
@@ -119,7 +129,15 @@ router.get('/conversations/:conversationId/messages', verifyToken, async (req, r
     const messages = await Message.find({
       conversationId,
       isDeleted: false,
-      deletedBy: { $ne: userId }
+      deletedBy: { $ne: userId },
+      // Chỉ lấy messages mà:
+      // - Không có visibleTo (message thường) HOẶC
+      // - visibleTo có chứa userId (message giới hạn như group call ended)
+      $or: [
+        { visibleTo: { $exists: false } },
+        { visibleTo: { $size: 0 } },
+        { visibleTo: userId }
+      ]
     })
     .populate('sender', 'displayName profilePicture')
     .populate('reactions.user', 'displayName profilePicture email')
@@ -127,6 +145,17 @@ router.get('/conversations/:conversationId/messages', verifyToken, async (req, r
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(limit);
+
+    console.log(`🔍 [Messages API] User ${userId} fetched ${messages.length} messages from conversation ${conversationId}`);
+    
+    // Debug: Log messages with visibleTo
+    const messagesWithVisibleTo = messages.filter(m => m.visibleTo && m.visibleTo.length > 0);
+    if (messagesWithVisibleTo.length > 0) {
+      console.log(`🔍 [Messages API] Found ${messagesWithVisibleTo.length} messages with visibleTo restrictions:`);
+      messagesWithVisibleTo.forEach(m => {
+        console.log(`  - Message ${m._id}: visibleTo=${JSON.stringify(m.visibleTo)}`);
+      });
+    }
 
     res.status(200).json({
       messages: (messages || []).reverse(), // Reverse để hiển thị từ cũ đến mới
@@ -147,47 +176,24 @@ router.post('/conversations/:conversationId/messages', verifyToken, async (req, 
     
     let content = '';
     let messageType = 'text';
-    let fileName = null;
+    let fileUrl = null;
     let originalFileName = null;
     
-    // Xử lý file upload
-    if (req.files && req.files.file) {
-      const uploadedFile = req.files.file;
-      
-      console.log('📁 Processing file:', {
-        name: uploadedFile.name,
-        size: uploadedFile.size,
-        mimetype: uploadedFile.mimetype
-      });
-      
-      // Tạo tên file unique
-      const timestamp = Date.now();
-      originalFileName = uploadedFile.name;
-      const extension = originalFileName.split('.').pop();
-      fileName = `${timestamp}-${Math.random().toString(36).substring(2)}.${extension}`;
-      
-      // Xác định messageType dựa trên file type
-      if (uploadedFile.mimetype.startsWith('image/')) {
-        messageType = 'image';
-      } else {
-        messageType = 'file';
-      }
-      
-      // Upload file
-      const uploadPath = `./uploads/${fileName}`;
-      await uploadedFile.mv(uploadPath);
-    }
-    
-    // Lấy content từ body
+    // Lấy content và file URL từ body (file đã upload trước qua /upload endpoint)
     if (req.body.content) {
       content = sanitize(req.body.content);
     }
     
-    if (req.body.messageType) {
-      messageType = req.body.messageType;
+    if (req.body.fileUrl) {
+      fileUrl = sanitize(req.body.fileUrl);
+      messageType = req.body.messageType || 'file';
+    }
+    
+    if (req.body.originalFileName) {
+      originalFileName = sanitize(req.body.originalFileName);
     }
 
-    if (!content.trim() && !fileName) {
+    if (!content.trim() && !fileUrl) {
       return res.status(400).json({ error: 'Message content or file is required' });
     }
 
@@ -205,12 +211,12 @@ router.post('/conversations/:conversationId/messages', verifyToken, async (req, 
     const newMessage = new Message({
       conversationId,
       sender: userId,
-      content: content || '', // Đảm bảo content có giá trị
+      content: content || '',
       messageType,
-      file: fileName,
+      file: fileUrl, // Lưu Cloudinary URL
       originalFileName: originalFileName,
       readBy: [{
-        user: userId, // Người gửi tự động đã "đọc" tin nhắn của mình
+        user: userId,
         readAt: new Date()
       }]
     });
@@ -325,7 +331,19 @@ router.post('/conversations', verifyToken, async (req, res) => {
     // Populate thông tin participants
     await conversation.populate('participants', 'displayName profilePicture email lastSeen isOnline');
 
-    res.status(200).json(conversation);
+    // Format response giống GET /conversations để frontend nhận được cấu trúc nhất quán
+    const otherParticipant = conversation.participants.find(p => p._id.toString() !== userId);
+    const formattedConversation = {
+      _id: conversation._id,
+      isGroup: false,
+      participant: otherParticipant || { displayName: 'Unknown User', profilePicture: null, email: '' },
+      lastMessage: null,
+      lastMessageTime: conversation.createdAt,
+      unread: 0,
+      createdAt: conversation.createdAt
+    };
+
+    res.status(200).json(formattedConversation);
   } catch (error) {
     console.error('Create conversation error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -336,17 +354,35 @@ router.post('/conversations', verifyToken, async (req, res) => {
 router.get('/friends', verifyToken, async (req, res) => {
   try {
     const userId = req.user.id;
+    const limit = parseInt(req.query.limit) || 20;
+    const offset = parseInt(req.query.offset) || 0;
     
     const user = await User.findById(userId).select('followings');
+    console.log('📋 Get friends - user:', userId, 'limit:', limit, 'offset:', offset);
+    
     if (!user || !user.followings.length) {
-      return res.status(200).json([]);
+      console.log('⚠️ No followings');
+      return res.status(200).json({
+        users: [],
+        total: 0,
+        hasMore: false
+      });
     }
 
+    const total = user.followings.length;
     const friends = await User.find({
       _id: { $in: user.followings }
-    }).select('displayName profilePicture email');
+    })
+    .select('displayName profilePicture email')
+    .skip(offset)
+    .limit(limit);
 
-    res.status(200).json(friends);
+    console.log('✅ Returned:', friends.length, 'of', total);
+    res.status(200).json({
+      users: friends,
+      total: total,
+      hasMore: (offset + friends.length) < total
+    });
   } catch (error) {
     console.error('Get friends error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -1002,6 +1038,50 @@ router.delete('/messages/:messageId', verifyToken, async (req, res) => {
   } catch (error) {
     console.error('Delete message error:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST - Upload file cho message (Cloudinary)
+router.post('/upload', verifyToken, uploadMessage.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Vui lòng chọn file' });
+    }
+    
+    const isImage = req.file.mimetype.startsWith('image/');
+    const folder = isImage ? 'social-web/messages/images' : 'social-web/messages/files';
+    const resourceType = isImage ? 'image' : 'raw';
+    
+    // Upload lên Cloudinary từ buffer
+    const uploadStream = () => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: folder,
+            resource_type: resourceType
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+    };
+    
+    const result = await uploadStream();
+    
+    return res.status(200).json({ 
+      url: result.secure_url,
+      publicId: result.public_id,
+      fileName: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+      messageType: isImage ? 'image' : 'file'
+    });
+  } catch (err) {
+    console.error('Upload message file error:', err);
+    return res.status(500).json({ error: 'Lỗi upload file' });
   }
 });
 

@@ -167,10 +167,7 @@ export default {
       if (this.newImageFile) {
         return URL.createObjectURL(this.newImageFile);
       }
-      if (this.editedImageUrl) {
-        return `http://localhost:3000/uploads/${this.editedImageUrl}`;
-      }
-      return '';
+      return this.editedImageUrl || '';
     },
     imageAlt() {
       return 'Ảnh bài viết';
@@ -313,7 +310,7 @@ export default {
         }
 
         const data = await response.json();
-        return file.name; // Return the filename
+        return data.url; // Return Cloudinary URL từ response
       } catch (error) {
         console.error('Upload error:', error);
         throw new Error('Không thể tải lên ảnh. Vui lòng thử lại.');

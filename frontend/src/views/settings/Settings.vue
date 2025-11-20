@@ -12,6 +12,17 @@
       <div class="settings-main-area">       
         <!-- Content Area -->
         <div class="settings-content-area">
+          <!-- Avatar Upload -->
+          <div v-if="activeTab === 'avatar'" class="settings-panel">
+            <div class="panel-header">
+              <h2 class="panel-title">Ảnh đại diện</h2>
+              <p class="panel-subtitle">Tải lên và quản lý ảnh đại diện của bạn</p>
+            </div>
+            <div class="panel-body">
+              <AvatarUpload />
+            </div>
+          </div>
+          
           <!-- Privacy Settings -->
           <div v-if="activeTab === 'privacy'" class="settings-panel">
             <div class="panel-header">
@@ -44,6 +55,14 @@
         </div>
         <nav class="settings-nav">
           <button 
+            :class="['nav-item', { active: activeTab === 'avatar' }]"
+            @click="activeTab = 'avatar'"
+          >
+            <span class="nav-icon">👤</span>
+            <span class="nav-text">Ảnh đại diện</span>
+          </button>
+          
+          <button 
             :class="['nav-item', { active: activeTab === 'privacy' }]"
             @click="activeTab = 'privacy'"
           >
@@ -69,6 +88,7 @@ import TheHeader from '@/components/TheHeader.vue';
 import SidebarLeft from '@/components/SidebarLeft.vue';
 import PrivacySettings from '@/components/PrivacySettings.vue';
 import ChangePassword from '@/views/profile/components/ChangePassword.vue';
+import AvatarUpload from '@/views/profile/components/AvatarUpload.vue';
 
 export default {
   name: 'Settings',
@@ -76,7 +96,8 @@ export default {
     TheHeader,
     SidebarLeft,
     PrivacySettings,
-    ChangePassword
+    ChangePassword,
+    AvatarUpload
   },
   computed: {
     user() {
@@ -85,7 +106,7 @@ export default {
   },
   data() {
     return {
-      activeTab: 'privacy' // Default tab
+      activeTab: 'avatar' // Default tab
     };
   },
   mounted() {

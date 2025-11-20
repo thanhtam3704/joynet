@@ -6,7 +6,7 @@
         <template v-if="conversation && conversation.isGroup">
           <img
             v-if="conversation.groupAvatar"
-            :src="`http://localhost:3000/uploads/user/${conversation.groupAvatar}`"
+            :src="conversation.groupAvatar"
             alt="Group Avatar"
           />
           <div v-else class="group-avatar-icon">
@@ -17,7 +17,7 @@
         <template v-else>
           <img 
             v-if="conversation && conversation.recipientAvatar"
-            :src="`http://localhost:3000/uploads/user/${conversation.recipientAvatar}`" 
+            :src="conversation.recipientAvatar" 
             alt="Avatar"
           />
           <img 

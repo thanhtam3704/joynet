@@ -16,8 +16,8 @@
       >
         <div class="message-avatar" v-if="message && !isMyMessage(message)">
           <img 
-            v-if="message && message.senderAvatar"
-            :src="getAvatarUrl(message.senderAvatar)" 
+            v-if="getSenderAvatar(message)"
+            :src="getAvatarUrl(getSenderAvatar(message))" 
             alt="Avatar"
             referrerpolicy="no-referrer"
             crossorigin="anonymous"
@@ -35,7 +35,8 @@
             class="message-bubble"
             :class="{ 
               'outgoing': isMyMessage(message),
-              'incoming': !isMyMessage(message)
+              'incoming': !isMyMessage(message),
+              'call-message': isCallMessage(message)
             }"
             @mousedown="startLongPress($event, message)"
             @mouseup="cancelLongPress"
@@ -54,7 +55,7 @@
 
             <div v-if="message && message.messageType === 'image'" class="message-image">
               <img 
-                :src="message && (message.fileUrl || (message.file ? `http://localhost:3000/uploads/${message.file}` : ''))" 
+                :src="message.fileUrl || message.file" 
                 alt="Image" 
                 @load="handleImageLoad"
                 @error="handleImageError"
@@ -68,7 +69,16 @@
               <span>{{ message.originalFileName || message.fileName || message.file || '' }}</span>
               <i class="material-icons download-icon">download</i>
             </div>
-            <span v-if="message && message.content">{{ message.content }}</span>
+            
+            <!-- Call Message with Icon -->
+            <div v-if="message && message.content && isCallMessage(message)" class="call-message-content">
+              <i class="material-icons call-icon" :class="{ 'missed': isMissedCallMessage(message) }">videocam</i>
+              <span style="white-space: pre-line;">{{ getCallMessageDisplay(message).replace('📞', '').replace('🎥', '').trim() }}</span>
+            </div>
+            
+            <!-- Regular Message -->
+            <span v-else-if="message && message.content">{{ message.content }}</span>
+            
             <div v-if="message && message.isSending" class="message-status">
               <i class="material-icons sending">schedule</i>
             </div>
@@ -132,6 +142,7 @@
     </div>
 
     <!-- Edit Message Modal -->
+    <teleport to="body">
     <div v-if="showEditModal" class="edit-modal-overlay" @click="cancelEdit">
       <div class="edit-modal" @click.stop>
         <div class="edit-modal-header">
@@ -154,8 +165,10 @@
         </div>
       </div>
     </div>
+    </teleport>
 
     <!-- Delete Confirmation Modal -->
+    <teleport to="body">
     <div v-if="showDeleteModal" class="edit-modal-overlay" @click="showDeleteModal = false">
       <div class="edit-modal delete-confirm-modal" @click.stop>
         <div class="edit-modal-header">
@@ -173,6 +186,7 @@
         </div>
       </div>
     </div>
+    </teleport>
   </div>
 </template>
 
@@ -227,6 +241,99 @@ export default {
     }
   },
   methods: {
+    getSenderAvatar(message) {
+      if (!message) return null;
+      
+      // Ưu tiên: sender.profilePicture (từ API) > senderAvatar (từ socket cũ)
+      if (message.sender && message.sender.profilePicture) {
+        return message.sender.profilePicture;
+      }
+      if (message.senderAvatar) {
+        return message.senderAvatar;
+      }
+      
+      return null;
+    },
+    
+    isCallMessage(message) {
+      if (!message || !message.content) return false;
+      const content = String(message.content);
+      return content.includes('📞') || content.includes('🎥📞') || 
+             content.includes('CALL_CANCELLED') || content.includes('CALL_MISSED') || 
+             content.includes('CALL_ENDED');
+    },
+    
+    isMissedCallMessage(message) {
+      if (!message || !message.content) return false;
+      const content = String(message.content);
+      return content.includes('CALL_MISSED') || content.includes('CALL_NO_ANSWER') ||
+             content.includes('📞 Cuộc gọi nhỡ') || 
+             content.includes('📞 Không có phản hồi') ||
+             content.includes('📞 Bạn đã bỏ lỡ') ||
+             content.startsWith('📞 CALL_MISSED_GROUP_USER|');
+    },
+    
+    // Transform call message content based on viewer
+    getCallMessageDisplay(message) {
+      if (!message || !message.content) return '';
+      const content = String(message.content);
+      const isMyMessage = this.isMyMessage(message);
+      
+      // 1-1 CALL_CANCELLED (caller cancelled before anyone answered)
+      // Caller: "Bạn đã hủy cuộc gọi"
+      // Receiver: "Cuộc gọi nhỡ"
+      if (content === '📞 CALL_CANCELLED') {
+        return isMyMessage ? '📞 Bạn đã hủy cuộc gọi' : '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Group CALL_CANCELLED
+      if (content === '📞 CALL_CANCELLED_GROUP') {
+        return isMyMessage ? '📞 Bạn đã hủy cuộc gọi nhóm' : '📞 Cuộc gọi nhóm đã bị bỏ lỡ';
+      }
+      
+      // 1-1 CALL_NO_ANSWER (timeout or reject - no one answered)
+      // Caller: "Không có phản hồi"
+      // Receiver: "Cuộc gọi nhỡ"
+      if (content === '📞 CALL_NO_ANSWER') {
+        return isMyMessage ? '📞 Không có phản hồi' : '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Legacy: CALL_MISSED (old code, should not appear anymore)
+      if (content === '📞 CALL_MISSED') {
+        return '📞 Cuộc gọi nhỡ';
+      }
+      
+      // Group CALL_MISSED
+      if (content === '📞 CALL_MISSED_GROUP') {
+        return '📞 Cuộc gọi nhóm đã bị bỏ lỡ';
+      }
+      
+      // Group CALL_MISSED for specific user (didn't join)
+      if (content.startsWith('📞 CALL_MISSED_GROUP_USER|')) {
+        const parts = content.split('|');
+        const callerName = parts[1] || 'Unknown';
+        return `📞 Bạn đã bỏ lỡ cuộc gọi nhóm từ ${callerName}`;
+      }
+      
+      // CALL_ENDED - parse duration
+      if (content.startsWith('🎥📞 CALL_ENDED|')) {
+        const parts = content.split('|');
+        const duration = parts[1] || '0 giây';
+        return `🎥📞 Cuộc gọi video kết thúc\nThời lượng: ${duration}`;
+      }
+      
+      // CALL_ENDED_GROUP - parse duration and participants
+      if (content.startsWith('🎥📞 CALL_ENDED_GROUP|')) {
+        const parts = content.split('|');
+        const duration = parts[1] || '0 giây';
+        const joinedCount = parts[2] || '0';
+        return `🎥📞 Cuộc gọi nhóm kết thúc\nThời lượng: ${duration}\n${joinedCount} người đã tham gia`;
+      }
+      
+      // Return original content if no transformation needed
+      return content;
+    },
+    
     isMyMessage(message) {
       if (!message) return false;
       if (!message.senderId || !this.currentUserId) return false;
@@ -317,6 +424,20 @@ export default {
     downloadFile(message) {
       if (!message.file) return;
       
+      // Check if it's a Cloudinary URL
+      if (message.file.startsWith('http://') || message.file.startsWith('https://')) {
+        // Direct download from Cloudinary
+        const link = document.createElement('a');
+        link.href = message.file;
+        link.download = message.originalFileName || 'file';
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        return;
+      }
+      
+      // Local file - use backend endpoint
       const token = localStorage.getItem('token');
       const filename = message.file;
       const downloadUrl = `http://localhost:3000/api/messages/download/${filename}`;
@@ -384,6 +505,8 @@ export default {
       if (!message || message.messageType !== 'text') return false;
       // Check if message has been read by others (if readBy exists)
       if (message.readBy && message.readBy.length > 1) return false;
+      // Don't allow editing call messages
+      if (this.isCallMessage(message)) return false;
       return true;
     },
 
@@ -460,12 +583,12 @@ export default {
       }
       
       // Nếu đã là absolute URL (bắt đầu bằng http/https)
-      if (avatarPath.startsWith('http')) {
-        return avatarPath; // Trả về nguyên URL cho Google OAuth avatar
+      if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+        return avatarPath; // Trả về nguyên URL cho Google OAuth avatar hoặc Cloudinary
       }
       
       // Nếu là relative path (uploaded avatar), thêm base URL  
-      const fullUrl = `http://localhost:3000/uploads/user/${avatarPath}`;
+      const fullUrl = avatarPath || require('@/assets/defaultProfile.png');
       return fullUrl;
     },
     
@@ -830,6 +953,57 @@ export default {
       box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
     }
   }
+  
+  &.call-message {
+    background: transparent !important;
+    border: 1px solid rgba(102, 126, 234, 0.3);
+    padding: 0.5rem 0.75rem;
+    box-shadow: none;
+    
+    &.incoming {
+      border-color: rgba(100, 100, 100, 0.2);
+    }
+    
+    &:hover {
+      background: rgba(0, 0, 0, 0.02) !important;
+      transform: none;
+      box-shadow: none;
+    }
+  }
+}
+
+.call-message-content {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #667eea;
+  font-size: 0.875rem;
+  font-weight: 500;
+  
+  .call-icon {
+    font-size: 18px;
+    color: #667eea;
+    
+    &.missed {
+      color: #ef4444;
+    }
+  }
+  
+  span {
+    color: inherit;
+  }
+}
+
+.message-bubble.incoming .call-message-content {
+  color: #1e293b;
+  
+  .call-icon {
+    color: #667eea;
+    
+    &.missed {
+      color: #ef4444;
+    }
+  }
 }
 
 .message-more-btn {
@@ -1124,11 +1298,11 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(0, 0, 0, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 10002;
 }
 
 .edit-modal {

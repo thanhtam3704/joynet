@@ -14,30 +14,36 @@ const MessageAPI = {
   },
 
   // Gửi message mới
-  sendMessage(conversationId, messageData) {
+  async sendMessage(conversationId, messageData) {
+    let fileUrl = null;
+    let originalFileName = null;
+    let messageType = messageData.messageType || 'text';
+    
+    // Upload file lên Cloudinary trước nếu có
     if (messageData.file) {
-      // Gửi file qua FormData
       const formData = new FormData();
-      if (messageData.content) {
-        formData.append('content', messageData.content);
-      }
-      if (messageData.messageType) {
-        formData.append('messageType', messageData.messageType);
-      }
       formData.append('file', messageData.file);
       
-      return http.post(`/messages/conversations/${conversationId}/messages`, formData, {
+      const uploadResponse = await http.post('/messages/upload', formData, {
         headers: {
           'Content-Type': 'multipart/form-data'
         }
       });
-    } else {
-      // Gửi text message qua JSON
-      return http.post(`/messages/conversations/${conversationId}/messages`, {
-        content: messageData.content,
-        messageType: messageData.messageType || 'text'
-      });
+      
+      if (uploadResponse.data && uploadResponse.data.url) {
+        fileUrl = uploadResponse.data.url;
+        originalFileName = messageData.file.name;
+        messageType = uploadResponse.data.messageType || messageType;
+      }
     }
+    
+    // Gửi message với Cloudinary URL
+    return http.post(`/messages/conversations/${conversationId}/messages`, {
+      content: messageData.content || '',
+      messageType: messageType,
+      fileUrl: fileUrl,
+      originalFileName: originalFileName
+    });
   },
 
   // Tạo conversation mới hoặc tìm conversation đã tồn tại
@@ -46,8 +52,8 @@ const MessageAPI = {
   },
 
   // Lấy danh sách bạn bè để chat
-  getFriends() {
-    return http.get('/messages/friends');
+  getFriends(limit = 20, offset = 0) {
+    return http.get('/messages/friends', { params: { limit, offset } });
   },
 
   // Đánh dấu messages đã đọc

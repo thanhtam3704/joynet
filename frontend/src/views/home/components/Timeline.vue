@@ -81,7 +81,7 @@
           <div class="user-post-image" v-if="post.file">
             <img
               class="image-post__img"
-              :src="`http://localhost:3000/uploads/${post.file}`"
+              :src="post.file"
             />
           </div>
         </div>
@@ -133,7 +133,7 @@
             <img
               v-if="comment.file"
               class="comment-image"
-              :src="`http://localhost:3000/uploads/${comment.file}`"
+              :src="comment.file"
             />
           </div>
         </div>
@@ -195,32 +195,36 @@
     </div>
 
     <!-- Edit Comment Modal -->
-    <div v-if="showEditCommentModal" class="edit-modal-overlay" @click.self="cancelEditComment">
-      <div class="edit-modal">
-        <div class="edit-modal-header">
-          <h3>Sửa bình luận</h3>
-        </div>
-        <div class="edit-modal-body">
-          <textarea v-model="editingCommentContent" ref="editCommentTextarea"></textarea>
-        </div>
-        <div class="edit-modal-footer">
-          <button @click="cancelEditComment" class="btn-cancel">Hủy</button>
-          <button @click="saveEditComment" class="btn-save">Lưu</button>
+    <teleport to="body">
+      <div v-if="showEditCommentModal" class="edit-modal-overlay" @click.self="cancelEditComment">
+        <div class="edit-modal">
+          <div class="edit-modal-header">
+            <h3>Sửa bình luận</h3>
+          </div>
+          <div class="edit-modal-body">
+            <textarea v-model="editingCommentContent" ref="editCommentTextarea"></textarea>
+          </div>
+          <div class="edit-modal-footer">
+            <button @click="cancelEditComment" class="btn-cancel">Hủy</button>
+            <button @click="saveEditComment" class="btn-save">Lưu</button>
+          </div>
         </div>
       </div>
-    </div>
+    </teleport>
 
     <!-- Delete Comment Modal -->
-    <div v-if="showDeleteCommentModal" class="edit-modal-overlay" @click.self="showDeleteCommentModal = false">
-      <div class="edit-modal delete-confirm-modal" @click.stop>
-        <h3>Xóa bình luận</h3>
-        <p>Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.</p>
-        <div class="modal-actions">
-          <button @click="showDeleteCommentModal = false" class="btn-cancel">Hủy</button>
-          <button @click="deleteComment" class="btn-delete">Xóa bình luận</button>
+    <teleport to="body">
+      <div v-if="showDeleteCommentModal" class="edit-modal-overlay" @click.self="showDeleteCommentModal = false">
+        <div class="edit-modal delete-confirm-modal" @click.stop>
+          <h3>Xóa bình luận</h3>
+          <p>Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.</p>
+          <div class="modal-actions">
+            <button @click="showDeleteCommentModal = false" class="btn-cancel">Hủy</button>
+            <button @click="deleteComment" class="btn-delete">Xóa bình luận</button>
+          </div>
         </div>
       </div>
-    </div>
+    </teleport>
   </div>
 </template>
 
@@ -1719,12 +1723,12 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 10002;
   animation: fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 1rem;
 }

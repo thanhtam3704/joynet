@@ -6,7 +6,7 @@
         <div class="calling-avatar">
           <img 
             v-if="recipientAvatar" 
-            :src="`http://localhost:3000/uploads/user/${recipientAvatar}`" 
+            :src="recipientAvatar" 
             alt="Avatar"
           />
           <div v-else class="default-avatar">

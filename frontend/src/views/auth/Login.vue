@@ -53,7 +53,9 @@
           <div class="login-button-loader" v-else>
             <SyncLoader class="login-loader" :color="color" />
           </div>
-          <button type="reset" v-if="!loginLoading">Quên mật khẩu?</button>
+          <router-link to="/forgot-password">
+            <button type="button" class="forgot-password-link" v-if="!loginLoading">Quên mật khẩu?</button>
+          </router-link>
         </div>
         <div class="button-group-right" v-if="!loginLoading">
           <router-link to="/signup">
@@ -102,7 +104,8 @@ export default {
     };
   },
   mounted() {
-    // ✅ Clear store và disconnect socket khi vào trang login
+    // ✅ Clear store, xóa token và disconnect socket khi vào trang login
+    localStorage.removeItem('token');
     this.$store.commit('clearUser');
     
     // Kiểm tra URL params để xử lý Google OAuth callback
@@ -321,7 +324,8 @@ export default {
 
 .input {
   position: relative;
-  margin-bottom: 2rem;
+  display: block; /* ensure wrapper margins apply */
+  margin-bottom: 1.25rem; /* consistent spacing with signup */
 
   &__field {
     box-sizing: border-box;
@@ -351,6 +355,24 @@ export default {
     }
 
     &:not(:placeholder-shown) {
+      & + .input__label {
+        transform: translate(-0.25rem, -50%) scale(0.85);
+        color: var(--gray-600);
+        background: rgba(255, 255, 255, 0.98);
+        padding: 0 0.5rem;
+        font-weight: 600;
+        top: 0;
+      }
+    }
+
+    /* ✅ XỬ LÝ AUTOFILL - Label tự động lên khi browser nhớ mật khẩu */
+    &:-webkit-autofill,
+    &:-webkit-autofill:hover,
+    &:-webkit-autofill:focus {
+      -webkit-box-shadow: 0 0 0 1000px white inset;
+      -webkit-text-fill-color: var(--gray-900);
+      transition: background-color 5000s ease-in-out 0s;
+      
       & + .input__label {
         transform: translate(-0.25rem, -50%) scale(0.85);
         color: var(--gray-600);
@@ -479,7 +501,8 @@ button:active {
   box-shadow: 0 4px 6px -1px rgba(102, 126, 234, 0.3);
 }
 
-button[type="reset"] {
+button[type="reset"],
+.forgot-password-link {
   background: transparent;
   color: var(--primary);
   box-shadow: none;
@@ -487,10 +510,12 @@ button[type="reset"] {
   font-weight: 500;
   white-space: nowrap;
   flex: 1;
+  transition: all 0.2s ease;
 }
 
-button[type="reset"]:hover {
-  background: var(--gray-100);
+button[type="reset"]:hover,
+.forgot-password-link:hover {
+  background: rgba(99, 102, 241, 0.08);
   transform: none;
   box-shadow: none;
 }

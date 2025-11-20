@@ -59,16 +59,9 @@ export default {
         // Setup notification listener
         this.setupNotificationListener()
         
-        // ✅ Đảm bảo video call listener được setup ngay sau khi connect
-        // Điều này đảm bảo rằng khi backend gửi video-call:incoming ngay sau connect,
-        // listener đã sẵn sàng để nhận
-        this.$nextTick(() => {
-          if (window.ChatPopupsManager && window.ChatPopupsManager.handleGlobalIncomingCall) {
-            console.log('✅ [App] Ensuring video call listener is registered after connect');
-            socketService.off('video-call:incoming'); // Remove any existing listener
-            socketService.on('video-call:incoming', window.ChatPopupsManager.handleGlobalIncomingCall);
-          }
-        })
+        // ✅ DON'T setup video call listener here - ChatPopupsManager handles it
+        // ChatPopupsManager already sets up the listener in its mounted() hook
+        // and re-registers it on socket reconnection via 'socket-connected' event
       }
     },
     

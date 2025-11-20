@@ -7,6 +7,7 @@ import {
 import Home from "@/views/home/Home.vue";
 import Login from "@/views/auth/Login.vue";
 import Signup from "@/views/auth/Signup.vue";
+import ForgotPassword from "@/views/auth/ForgotPassword.vue";
 import PostDetail from "@/views/post/PostDetail.vue";
 import Profile from "@/views/profile/Profile.vue";
 import Message from "@/views/message/Message.vue";
@@ -49,6 +50,11 @@ const routes = [
     path: "/signup",
     name: "Signup",
     component: Signup,
+  },
+  {
+    path: "/forgot-password",
+    name: "ForgotPassword",
+    component: ForgotPassword,
   },
   {
     path: "/profile/:id",

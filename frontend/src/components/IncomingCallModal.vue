@@ -1,6 +1,6 @@
 <template>
   <teleport to="body">
-    <div v-show="isVisible" class="incoming-call-overlay" @click.self="reject">
+    <div v-if="isVisible" class="incoming-call-overlay" @click.self="handleOverlayClick">
       <div class="incoming-call-modal">
         <button class="close-btn" @click="reject">&times;</button>
         
@@ -90,6 +90,12 @@ export default {
     reject() {
       console.log('❌ [IncomingCallModal] Reject clicked');
       this.$emit('reject');
+      this.hide();
+    },
+    handleOverlayClick() {
+      console.log('👆 [IncomingCallModal] Overlay clicked - silently dismissing');
+      // Just hide modal without emitting reject
+      // Caller's timeout will create the "missed call" message
       this.hide();
     },
     handleImageError(e) {

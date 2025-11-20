@@ -13,41 +13,102 @@
           <input 
             type="text" 
             v-model="searchQuery" 
-            placeholder="Tìm kiếm bạn bè..."
-            @input="filterFriends"
+            placeholder="Tìm kiếm người liên hệ..."
+            @input="handleSearch"
+            ref="searchInput"
           />
           <i class="material-icons">search</i>
         </div>
         
-        <div class="friends-list">
-          <div 
-            v-for="friend in filteredFriends" 
-            :key="friend && friend._id ? friend._id : Math.random()"
-            class="friend-item"
-            @click="selectFriend(friend)"
-          >
-            <div class="friend-avatar">
-              <img 
-                v-if="friend && friend.profilePicture"
-                :src="friend && friend.profilePicture ? `http://localhost:3000/uploads/user/${friend.profilePicture}` : ''" 
-                alt="Avatar"
-              />
-              <img 
-                v-else
-                src="@/assets/defaultProfile.png" 
-                alt="Default Avatar"
-              />
-            </div>
-            <div class="friend-info">
-              <div class="friend-name">{{ friend && friend.displayName || 'Unknown' }}</div>
-              <div class="friend-email">{{ friend && friend.email || '' }}</div>
+        <div class="friends-list" @scroll="handleScroll" ref="friendsList">
+          <!-- Loading initial -->
+          <div v-if="loading && suggestedUsers.length === 0" class="loading-skeleton">
+            <div class="friend-skeleton" v-for="i in 6" :key="'skeleton-' + i">
+              <Skeletor circle width="48" height="48" />
+              <div class="skeleton-text">
+                <Skeletor width="120" height="14" />
+                <Skeletor width="80" height="10" style="margin-top: 4px;" />
+              </div>
             </div>
           </div>
           
-          <div v-if="filteredFriends.length === 0" class="no-friends">
-            <p v-if="friends.length === 0">Bạn chưa có bạn bè nào</p>
-            <p v-else>Không tìm thấy bạn bè phù hợp</p>
-          </div>
+          <!-- Search results -->
+          <template v-else-if="searchQuery">
+            <div v-if="searchResults.length === 0" class="no-friends">
+              <p>Không tìm thấy người dùng</p>
+            </div>
+            <div 
+              v-else
+              v-for="user in searchResults" 
+              :key="user._id"
+              class="friend-item"
+              @click="selectFriend(user)"
+            >
+              <div class="friend-avatar">
+                <img 
+                  v-if="user.profilePicture"
+                  :src="user.profilePicture" 
+                  alt="Avatar"
+                />
+                <img 
+                  v-else
+                  src="@/assets/defaultProfile.png" 
+                  alt="Default Avatar"
+                />
+              </div>
+              <div class="friend-info">
+                <div class="friend-name">{{ user.displayName || user.email }}</div>
+                <div class="friend-email">{{ user.email }}</div>
+              </div>
+            </div>
+          </template>
+          
+          <!-- Suggested users -->
+          <template v-else>
+            <div 
+              v-for="user in suggestedUsers" 
+              :key="user._id"
+              class="friend-item"
+              @click="selectFriend(user)"
+            >
+              <div class="friend-avatar">
+                <img 
+                  v-if="user.profilePicture"
+                  :src="user.profilePicture" 
+                  alt="Avatar"
+                />
+                <img 
+                  v-else
+                  src="@/assets/defaultProfile.png" 
+                  alt="Default Avatar"
+                />
+              </div>
+              <div class="friend-info">
+                <div class="friend-name">{{ user.displayName || user.email }}</div>
+                <div class="friend-email" v-if="user.displayName">{{ user.email }}</div>
+              </div>
+            </div>
+            
+            <!-- Loading more -->
+            <div v-if="loadingMore" class="loading-more">
+              <div class="friend-skeleton" v-for="i in 3" :key="'loading-' + i">
+                <Skeletor circle width="48" height="48" />
+                <div class="skeleton-text">
+                  <Skeletor width="120" height="14" />
+                </div>
+              </div>
+            </div>
+            
+            <!-- End indicator -->
+            <div v-else-if="!hasMore && suggestedUsers.length > 0" class="no-more">
+              <span>Đã hiển thị tất cả</span>
+            </div>
+            
+            <!-- Empty state -->
+            <div v-if="!loading && suggestedUsers.length === 0" class="no-friends">
+              <p>Chưa có người liên hệ nào</p>
+            </div>
+          </template>
         </div>
       </div>
     </div>
@@ -55,57 +116,181 @@
 </template>
 
 <script>
+import { Skeletor } from 'vue-skeletor';
+
 export default {
   name: 'NewConversationModal',
+  components: { Skeletor },
   props: {
     show: {
       type: Boolean,
       default: false
-    },
-    friends: {
-      type: Array,
-      default: () => []
     }
   },
   data() {
     return {
       searchQuery: '',
-      filteredFriends: []
+      searchResults: [],
+      suggestedUsers: [],
+      loading: false,
+      loadingMore: false,
+      searchTimeout: null,
+      limit: 20,
+      offset: 0,
+      hasMore: true
     };
   },
   watch: {
-    friends: {
-      immediate: true,
-      handler() {
-        this.filteredFriends = this.friends;
+    show(newVal) {
+      if (newVal) {
+        this.resetAndLoad();
+        this.$nextTick(() => {
+          this.$refs.searchInput?.focus();
+        });
       }
     }
   },
   methods: {
+    resetAndLoad() {
+      this.searchQuery = '';
+      this.searchResults = [];
+      this.suggestedUsers = [];
+      this.offset = 0;
+      this.hasMore = true;
+      this.loadSuggestedUsers();
+    },
+    
     closeModal() {
       this.$emit('close');
       this.searchQuery = '';
     },
     
-    filterFriends() {
-      if (!this.searchQuery) {
-        this.filteredFriends = this.friends;
+    handleSearch() {
+      if (!this.searchQuery || this.searchQuery.trim().length === 0) {
+        this.searchResults = [];
         return;
       }
-      
-      const query = this.searchQuery.toLowerCase();
-      this.filteredFriends = (this.friends || []).filter(friend => {
-        if (!friend) return false;
-        const displayName = friend.displayName || '';
-        const email = friend.email || '';
-        return displayName.toLowerCase().includes(query) ||
-               email.toLowerCase().includes(query);
-      });
+
+      if (this.searchTimeout) {
+        clearTimeout(this.searchTimeout);
+      }
+
+      this.searchTimeout = setTimeout(async () => {
+        this.loading = true;
+        try {
+          const { getAllUsers } = await import('@/api/users');
+          const response = await getAllUsers();
+          
+          if (response.status === 200) {
+            const currentUserId = this.$store.state.user?._id;
+            const query = this.searchQuery.toLowerCase().trim();
+            
+            this.searchResults = response.data
+              .filter(user => {
+                if (user._id === currentUserId) return false;
+                
+                const name = (user.displayName || '').toLowerCase();
+                const email = (user.email || '').toLowerCase();
+                
+                return name.includes(query) || email.includes(query);
+              })
+              .slice(0, 10);
+          }
+        } catch (error) {
+          console.error('Search users error:', error);
+        } finally {
+          this.loading = false;
+        }
+      }, 300);
     },
     
-    selectFriend(friend) {
-      if (friend && friend._id) {
-        this.$emit('select-friend', friend._id);
+    async loadSuggestedUsers() {
+      if (this.loading || this.loadingMore || !this.hasMore) return;
+      
+      this.loading = this.offset === 0;
+      this.loadingMore = this.offset > 0;
+      
+      try {
+        const currentUserId = this.$store.state.user?._id;
+        
+        // Lấy danh sách người liên hệ với pagination
+        const { getSuggestedContacts } = await import('@/api/users');
+        const contactsResponse = await getSuggestedContacts(this.limit, this.offset);
+        const newContacts = contactsResponse.data.users || [];
+        
+        console.log(`✅ Got ${newContacts.length} contacts from API (offset: ${this.offset})`);
+        
+        // Lấy conversations - chỉ lần đầu
+        let conversationUsers = [];
+        if (this.offset === 0) {
+          const conversations = this.$store.state.conversations || [];
+          conversationUsers = conversations
+            .map(conv => conv.participants?.[0])
+            .filter(user => user && user._id !== currentUserId);
+        }
+        
+        // Kết hợp và loại bỏ trùng lặp
+        const allUsersMap = new Map();
+        
+        // Thêm existing users
+        this.suggestedUsers.forEach(user => {
+          allUsersMap.set(user._id, user);
+        });
+        
+        // Thêm conversation users (ưu tiên cao hơn)
+        conversationUsers.forEach(user => {
+          if (!allUsersMap.has(user._id)) {
+            allUsersMap.set(user._id, { ...user, priority: 1 });
+          }
+        });
+        
+        // Thêm contacts
+        newContacts.forEach(user => {
+          if (!allUsersMap.has(user._id)) {
+            allUsersMap.set(user._id, { ...user, priority: 2 });
+          }
+        });
+        
+        // Sắp xếp
+        const sortedUsers = Array.from(allUsersMap.values())
+          .sort((a, b) => {
+            if (a.priority !== b.priority) {
+              return a.priority - b.priority;
+            }
+            const aTime = a.lastSeen ? new Date(a.lastSeen).getTime() : 0;
+            const bTime = b.lastSeen ? new Date(b.lastSeen).getTime() : 0;
+            return bTime - aTime;
+          });
+        
+        this.suggestedUsers = sortedUsers;
+        this.offset += newContacts.length;
+        this.hasMore = contactsResponse.data.hasMore || false;
+        
+        console.log('Suggested users loaded:', this.suggestedUsers.length, 'hasMore:', this.hasMore);
+      } catch (error) {
+        console.error('Load suggested users error:', error);
+      } finally {
+        this.loading = false;
+        this.loadingMore = false;
+      }
+    },
+    
+    handleScroll(event) {
+      const element = event.target;
+      const scrollTop = element.scrollTop;
+      const scrollHeight = element.scrollHeight;
+      const clientHeight = element.clientHeight;
+      
+      // Load more khi scroll gần đến cuối và không đang search
+      if (scrollTop + clientHeight >= scrollHeight - 100 && !this.searchQuery) {
+        console.log('🔄 Loading more suggested users...');
+        this.loadSuggestedUsers();
+      }
+    },
+    
+    selectFriend(user) {
+      if (user && user._id) {
+        this.$emit('select-friend', user._id);
       }
       this.closeModal();
     }
@@ -331,6 +516,41 @@ export default {
     font-size: 0.9375rem;
     font-weight: 500;
   }
+}
+
+.loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+}
+
+.friend-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 0;
+}
+
+.skeleton-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.loading-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+}
+
+.no-more {
+  text-align: center;
+  padding: 1rem;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-style: italic;
 }
 
 @keyframes fadeIn {

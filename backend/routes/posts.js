@@ -6,6 +6,24 @@ const Notification = require("../models/Notification.js");
 const { createNotification } = require("./notifications.js");
 const mongoSanitize = require("express-mongo-sanitize");
 const sanitize = require("mongo-sanitize");
+const multer = require('multer');
+const cloudinary = require('../config/cloudinary');
+
+// Cấu hình Multer memory storage
+const postStorage = multer.memoryStorage();
+
+const uploadPost = multer({ 
+  storage: postStorage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'video/mp4', 'video/quicktime'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type'), false);
+    }
+  }
+});
 
 // Tạo post mới với description, isTextPost, isImagePost, userId, file
 router.post("/", async (req, res) => {
@@ -33,17 +51,44 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Upload ảnh cho bài viết vào thư mục uploads/
-router.post("/upload", (req, res) => {
-  const file = req.files.file;
-  file.mv("uploads/" + file.name, function (err) {
-    if (err) {
-      console.log(err);
-    } else {
-      console.log("uploaded");
+// Upload ảnh/video cho bài viết lên Cloudinary
+router.post("/upload", uploadPost.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Vui lòng chọn file' });
     }
-  });
-  return res.json({ file: req.body.file });
+    
+    // Xác định resource type
+    const resourceType = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+    
+    // Upload lên Cloudinary từ buffer
+    const uploadStream = () => {
+      return new Promise((resolve, reject) => {
+        const stream = cloudinary.uploader.upload_stream(
+          {
+            folder: 'social-web/posts',
+            resource_type: resourceType
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        stream.end(req.file.buffer);
+      });
+    };
+    
+    const result = await uploadStream();
+    
+    return res.status(200).json({ 
+      url: result.secure_url,
+      publicId: result.public_id,
+      resourceType: resourceType
+    });
+  } catch (err) {
+    console.error('Upload post file error:', err);
+    return res.status(500).json({ error: 'Lỗi upload file' });
+  }
 });
 
 //COMMENT POST

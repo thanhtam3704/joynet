@@ -2,6 +2,7 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const path = require('path');
+const cloudinary = require('cloudinary').v2;
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const passport = require('passport');
@@ -13,11 +14,30 @@ passport.use(new GoogleStrategy({
     callbackURL: process.env.GOOGLE_CALLBACK_URL
 }, async (accessToken, refreshToken, profile, done) => {
     try {
+        // Upload ảnh Google lên Cloudinary
+        let cloudinaryAvatarUrl = '';
+        if (profile.photos && profile.photos[0]) {
+            try {
+                const uploadResult = await cloudinary.uploader.upload(profile.photos[0].value, {
+                    folder: 'social-web/avatars',
+                    transformation: [{ width: 500, height: 500, crop: 'fill' }]
+                });
+                cloudinaryAvatarUrl = uploadResult.secure_url;
+            } catch (uploadError) {
+                console.error('Failed to upload Google avatar:', uploadError);
+                // Fallback to Google URL nếu upload thất bại
+                cloudinaryAvatarUrl = profile.photos[0].value;
+            }
+        }
+        
         // Tìm user với Google ID
         let existingUser = await User.findOne({ googleId: profile.id });
         
         if (existingUser) {
-            // User đã tồn tại, cập nhật thông tin
+            // User đã tồn tại, cập nhật avatar nếu cần
+            if (!existingUser.profilePicture || existingUser.profilePicture.includes('googleusercontent.com')) {
+                existingUser.profilePicture = cloudinaryAvatarUrl;
+            }
             existingUser.lastSeen = new Date();
             existingUser.isOnline = true;
             await existingUser.save();
@@ -38,8 +58,8 @@ passport.use(new GoogleStrategy({
             if (!userWithEmail.displayName) {
                 userWithEmail.displayName = profile.displayName;
             }
-            if (!userWithEmail.profilePicture && profile.photos[0]) {
-                userWithEmail.profilePicture = profile.photos[0].value;
+            if (!userWithEmail.profilePicture) {
+                userWithEmail.profilePicture = cloudinaryAvatarUrl;
             }
             
             await userWithEmail.save();
@@ -51,7 +71,7 @@ passport.use(new GoogleStrategy({
             googleId: profile.id,
             email: profile.emails[0].value,
             displayName: profile.displayName,
-            profilePicture: profile.photos[0]?.value || '',
+            profilePicture: cloudinaryAvatarUrl,
             confirmed: true, // Auto confirm
             password: 'GOOGLE_AUTH', // Placeholder password
             lastSeen: new Date(),

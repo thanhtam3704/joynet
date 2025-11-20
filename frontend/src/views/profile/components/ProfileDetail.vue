@@ -21,7 +21,7 @@
           <img
             class="image-post__img"
             v-if="user.profilePicture"
-            :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+            :src="user.profilePicture || require('@/assets/defaultProfile.png')"
           />
           <img
             v-else

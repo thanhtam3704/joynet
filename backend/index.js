@@ -14,7 +14,7 @@ const dotenv = require('dotenv')
 const helmet = require('helmet')
 const morgan = require('morgan')
 const cors = require('cors')
-const fileupload = require('express-fileupload')
+// const fileupload = require('express-fileupload') // Không cần nữa - dùng Cloudinary
 const expressSanitizer = require('express-sanitizer')
 const sanitize = require('mongo-sanitize')
 const session = require('express-session')
@@ -60,8 +60,7 @@ app.use(cors({
   origin: 'http://localhost:8080',
   optionsSuccessStatus: 200
 }))
-app.use(fileupload())
-app.use('/uploads', express.static('uploads'))
+// app.use(fileupload()) // Không cần nữa - dùng Cloudinary
 app.use(expressSanitizer())
 
 // Session & Passport middleware

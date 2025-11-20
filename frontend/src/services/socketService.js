@@ -28,7 +28,29 @@ class SocketService {
 
     this.socket.on('connect', () => {
       console.log('🔌 [SocketService] Socket connected');
+      console.log('🔌 [SocketService] Socket ID:', this.socket.id);
       this.isConnected = true;
+      
+      // DEBUG: Listen to ALL events at socket level
+      this.socket.onAny((eventName, ...args) => {
+        if (eventName.includes('video-call')) {
+          console.log('🚨 [SocketService] Video call event:', eventName, args);
+        }
+      });
+      
+      // CRITICAL: Setup video-call:cancelled listener at socket level
+      // This ensures event is received even if component listener fails
+      this.socket.on('video-call:cancelled', (data) => {
+        console.log('🔴🔴🔴 [SocketService] VIDEO-CALL:CANCELLED RECEIVED AT SOCKET LEVEL');
+        console.log('🔴 [SocketService] Data:', JSON.stringify(data));
+        console.log('🔴 [SocketService] Time:', new Date().toISOString());
+        
+        // Dispatch browser event as additional fallback
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('video-call-cancelled', { detail: data }));
+          console.log('🔴 [SocketService] Dispatched browser event: video-call-cancelled');
+        }
+      });
       
       // Re-register all listeners after reconnect
       this._reregisterListeners();
@@ -115,6 +137,7 @@ class SocketService {
       this.socket.off('newMessage');
       this.socket.on('newMessage', (data) => {
         console.log('📨 [SocketService] newMessage event received:', data);
+        console.log('📨 [SocketService] Message content:', data.message?.content);
         callback(data);
       });
     } else {

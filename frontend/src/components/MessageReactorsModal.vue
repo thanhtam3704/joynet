@@ -37,7 +37,7 @@
             >
               <img 
                 v-if="reactor.userAvatar"
-                :src="getUserAvatarUrl(reactor.userAvatar)"
+                :src="reactor.userAvatar"
                 class="reactor-avatar"
                 @error="handleAvatarError"
               />
@@ -97,14 +97,6 @@ export default {
   methods: {
     getEmojiCount(emoji) {
       return this.reactions.filter(r => r.emoji === emoji).length;
-    },
-    
-    getUserAvatarUrl(avatar) {
-      if (!avatar) return '';
-      if (avatar.startsWith('http')) {
-        return avatar; // Google OAuth avatar
-      }
-      return `http://localhost:3000/uploads/user/${avatar}`;
     },
     
     handleAvatarError(event) {

@@ -75,7 +75,7 @@
             </button>
           </div>
           <div v-if="post.file" class="post__image-wrapper" @click="goToPostDetail(post._id)" style="cursor: pointer;">
-            <img :src="`http://localhost:3000/uploads/${post.file}`" class="post__image" />
+            <img :src="post.file" class="post__image" />
           </div>
         </div>
       </div>
@@ -623,7 +623,7 @@ export default {
   border-radius: 14px;
   font-size: 0.8125rem;
   color: var(--gray-600);
-  margin: 0.25rem 0 0.25rem 0;
+  margin: 1rem 0 0.25rem 0;
   border: 1px solid rgba(107, 114, 128, 0.12);
   width: fit-content;
   max-width: max-content;

@@ -39,7 +39,7 @@
                 <div class="search-user-avatar">
                   <img 
                     v-if="user.profilePicture" 
-                    :src="`http://localhost:3000/uploads/user/${user.profilePicture}`" 
+                    :src="user.profilePicture || require('@/assets/defaultProfile.png')" 
                     alt="User avatar"
                   />
                   <img 
@@ -118,7 +118,7 @@
           <img
             v-if="user.profilePicture"
             class="user-avatar-img"
-            :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+            :src="user.profilePicture"
             :alt="user.displayName"
           />
           <img
@@ -138,7 +138,7 @@
               <img
                 v-if="user.profilePicture"
                 class="dropdown-avatar"
-                :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+                :src="user.profilePicture"
               />
               <img
                 v-else
@@ -277,6 +277,7 @@ export default {
     }
   },
   methods: {
+    
     logout() {
       // ✅ Disconnect socket before logout
       socketService.disconnect();
@@ -591,9 +592,16 @@ export default {
 
     handleOpenChat(conversation) {
       console.log('Opening chat popup for conversation:', conversation);
-      // Gọi method của ChatPopupsManager để mở chat
-      if (this.$refs.chatPopupsManager) {
-        this.$refs.chatPopupsManager.openChat(conversation);
+      // Gọi handleOpenChatPopup thay vì openChat trực tiếp để có logic check trùng lặp
+      if (window.openChatPopup) {
+        window.openChatPopup({
+          conversationId: conversation._id
+        });
+      } else if (this.$refs.chatPopupsManager) {
+        // Fallback nếu window.openChatPopup chưa khởi tạo
+        this.$refs.chatPopupsManager.handleOpenChatPopup({
+          conversationId: conversation._id
+        });
       }
     },
 

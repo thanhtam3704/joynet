@@ -145,7 +145,7 @@ img {
 }
 
 input, textarea, select {
-  padding-buttom: 10px;
+  padding-bottom: 10px; /* fix typo so bottom padding applies */
   outline: none;
   font-family: inherit;
   word-break: break-word;

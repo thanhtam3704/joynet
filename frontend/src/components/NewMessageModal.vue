@@ -27,7 +27,7 @@
         >
           <img 
             v-if="user.profilePicture" 
-            :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+            :src="user.profilePicture"
             :alt="user.displayName"
           />
           <img 
@@ -40,7 +40,7 @@
         </div>
       </div>
 
-      <div class="modal-body">
+      <div class="modal-body" @scroll="handleScroll">
         <div v-if="loading" class="loading-state">
           <div class="loading-spinner"></div>
           <span>Đang tìm kiếm...</span>
@@ -61,7 +61,7 @@
           >
             <img 
               v-if="user.profilePicture" 
-              :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+              :src="user.profilePicture"
               :alt="user.displayName"
               class="user-avatar"
             />
@@ -81,7 +81,18 @@
 
         <div v-else class="suggestions">
           <h4>Gợi ý</h4>
-          <div class="users-list">
+          
+          <div v-if="loading && suggestedUsers.length === 0" class="loading-skeleton">
+            <div class="user-skeleton" v-for="i in 6" :key="'skeleton-' + i">
+              <Skeletor circle width="48" height="48" />
+              <div class="skeleton-text">
+                <Skeletor width="120" height="14" />
+                <Skeletor width="80" height="10" style="margin-top: 4px;" />
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="users-list">
             <div 
               v-for="user in suggestedUsers" 
               :key="user._id"
@@ -90,7 +101,7 @@
             >
               <img 
                 v-if="user.profilePicture" 
-                :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+                :src="user.profilePicture"
                 :alt="user.displayName"
                 class="user-avatar"
               />
@@ -104,6 +115,21 @@
                 <span class="user-name">{{ user.displayName || user.email }}</span>
                 <span class="user-email" v-if="user.displayName">{{ user.email }}</span>
               </div>
+            </div>
+            
+            <!-- Loading more -->
+            <div v-if="loadingMore" class="loading-more">
+              <div class="user-skeleton" v-for="i in 3" :key="'loading-' + i">
+                <Skeletor circle width="48" height="48" />
+                <div class="skeleton-text">
+                  <Skeletor width="120" height="14" />
+                </div>
+              </div>
+            </div>
+            
+            <!-- End indicator -->
+            <div v-else-if="!hasMore && suggestedUsers.length > 0" class="no-more">
+              <span>Đã hiển thị tất cả</span>
             </div>
           </div>
         </div>
@@ -124,10 +150,12 @@
 </template>
 
 <script>
+import { Skeletor } from 'vue-skeletor';
 import MessageAPI from '@/api/messages'
 
 export default {
   name: 'NewMessageModal',
+  components: { Skeletor },
   data() {
     return {
       searchQuery: '',
@@ -135,7 +163,11 @@ export default {
       suggestedUsers: [],
       selectedUsers: [],
       loading: false,
-      searchTimeout: null
+      loadingMore: false,
+      searchTimeout: null,
+      limit: 20,
+      offset: 0,
+      hasMore: true
     }
   },
   mounted() {
@@ -184,18 +216,86 @@ export default {
     },
 
     async loadSuggestedUsers() {
+      if (this.loading || this.loadingMore || !this.hasMore) return;
+      
+      this.loading = this.offset === 0;
+      this.loadingMore = this.offset > 0;
+      
       try {
-        const { getAllUsers } = await import('@/api/users')
-        const response = await getAllUsers()
+        const currentUserId = this.$store.state.user?._id
         
-        if (response.status === 200) {
-          const currentUserId = this.$store.state.user?._id
-          this.suggestedUsers = response.data
-            .filter(user => user._id !== currentUserId)
-            .slice(0, 8)
+        // 1. Lấy danh sách người liên hệ (contacts) với pagination
+        const { getSuggestedContacts } = await import('@/api/users')
+        const contactsResponse = await getSuggestedContacts(this.limit, this.offset)
+        const newContacts = contactsResponse.data.users || []
+        
+        console.log(`✅ Got ${newContacts.length} contacts from API (offset: ${this.offset})`)
+        
+        // 2. Lấy danh sách conversations (người đã từng nhắn tin) - chỉ lần đầu
+        let conversationUsers = []
+        if (this.offset === 0) {
+          const conversations = this.$store.state.conversations || []
+          conversationUsers = conversations
+            .map(conv => conv.participants?.[0])
+            .filter(user => user && user._id !== currentUserId)
         }
+        
+        // 3. Kết hợp và loại bỏ trùng lặp
+        const allUsersMap = new Map()
+        
+        // Thêm existing users vào map
+        this.suggestedUsers.forEach(user => {
+          allUsersMap.set(user._id, user)
+        })
+        
+        // Thêm conversation users (ưu tiên cao hơn) - chỉ lần đầu
+        conversationUsers.forEach(user => {
+          if (!allUsersMap.has(user._id)) {
+            allUsersMap.set(user._id, { ...user, priority: 1 })
+          }
+        })
+        
+        // Thêm contacts
+        newContacts.forEach(user => {
+          if (!allUsersMap.has(user._id)) {
+            allUsersMap.set(user._id, { ...user, priority: 2 })
+          }
+        })
+        
+        // Chuyển thành array và sắp xếp
+        const sortedUsers = Array.from(allUsersMap.values())
+          .sort((a, b) => {
+            if (a.priority !== b.priority) {
+              return a.priority - b.priority
+            }
+            const aTime = a.lastSeen ? new Date(a.lastSeen).getTime() : 0
+            const bTime = b.lastSeen ? new Date(b.lastSeen).getTime() : 0
+            return bTime - aTime
+          })
+        
+        this.suggestedUsers = sortedUsers
+        this.offset += newContacts.length
+        this.hasMore = contactsResponse.data.hasMore || false
+        
+        console.log('Suggested users loaded:', this.suggestedUsers.length, 'hasMore:', this.hasMore)
       } catch (error) {
         console.error('Load suggested users error:', error)
+      } finally {
+        this.loading = false
+        this.loadingMore = false
+      }
+    },
+    
+    handleScroll(event) {
+      const element = event.target
+      const scrollTop = element.scrollTop
+      const scrollHeight = element.scrollHeight
+      const clientHeight = element.clientHeight
+      
+      // Chỉ load more khi không đang search
+      if (scrollTop + clientHeight >= scrollHeight - 100 && !this.searchQuery) {
+        console.log('🔄 Loading more suggested users...')
+        this.loadSuggestedUsers()
       }
     },
 
@@ -429,6 +529,41 @@ export default {
   color: #6b7280;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.loading-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+}
+
+.user-skeleton {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  padding: 0.75rem 0;
+}
+
+.skeleton-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.loading-more {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0 1.25rem;
+}
+
+.no-more {
+  text-align: center;
+  padding: 1rem;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  font-style: italic;
 }
 
 .users-list {

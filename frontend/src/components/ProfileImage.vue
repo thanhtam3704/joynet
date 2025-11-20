@@ -7,7 +7,7 @@
     <img
       v-if="profilePicture"
       class="image-post__avatar"
-      :src="`http://localhost:3000/uploads/user/${profilePicture}`"
+      :src="getAvatarUrl(profilePicture)"
       :key="`avatar-${id}-${profilePicture}`"
     />
     <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" :key="`default-${id}`" />
@@ -16,7 +16,7 @@
     <img
       v-if="profilePicture"
       class="image-post__avatar"
-      :src="`http://localhost:3000/uploads/user/${profilePicture}`"
+      :src="getAvatarUrl(profilePicture)"
       :key="`avatar-${id}-${profilePicture}`"
     />
     <img v-else class="image-post__avatar" src="@/assets/defaultProfile.png" :key="`default-${id}`" />
@@ -63,6 +63,15 @@ export default {
     await this.loadUserProfile();
   },
   methods: {
+    getAvatarUrl(avatarPath) {
+      if (!avatarPath) return '';
+      // Cloudinary URL → Dùng trực tiếp
+      if (avatarPath.startsWith('http://') || avatarPath.startsWith('https://')) {
+        return avatarPath;
+      }
+      // Local file → Thêm prefix
+      return avatarPath || require('@/assets/defaultProfile.png');
+    },
     async loadUserProfile() {
       try {
         // Check if id is valid

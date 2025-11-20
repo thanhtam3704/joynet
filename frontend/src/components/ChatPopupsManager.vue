@@ -26,6 +26,7 @@ import ChatPopup from './ChatPopup.vue'
 import IncomingCallModal from './IncomingCallModal.vue'
 import MessageAPI from '@/api/messages'
 import socketService from '@/services/socketService'
+import { eventBus } from '@/utils/eventBus'
 
 export default {
   name: 'ChatPopupsManager',
@@ -48,10 +49,6 @@ export default {
     }
   },
   mounted() {
-    console.log('🚀 [ChatPopupsManager] Component mounted');
-    console.log('🚀 [ChatPopupsManager] Socket connected:', socketService.getConnectionStatus());
-    console.log('🚀 [ChatPopupsManager] Socket object:', socketService.socket);
-    
     // Register global method to open chat popup
     window.openChatPopup = this.handleOpenChatPopup;
     
@@ -63,6 +60,10 @@ export default {
     
     // ✅ Listen for socket reconnection and re-setup listener
     window.addEventListener('socket-connected', this.setupVideoCallListener);
+    
+    // ✅ CRITICAL: Add browser event listener as fallback
+    window.addEventListener('video-call-cancelled', this.handleBrowserCallCancelled);
+    console.log('🟢 [ChatPopupsManager] Browser event listener registered');
     
     // ✅ Mark component as ready after mount
     this.$nextTick(() => {
@@ -76,19 +77,37 @@ export default {
     delete window.openChatPopup;
     delete window.ChatPopupsManager;
     window.removeEventListener('socket-connected', this.setupVideoCallListener);
+    window.removeEventListener('video-call-cancelled', this.handleBrowserCallCancelled);
     socketService.off('video-call:incoming', this.handleGlobalIncomingCall);
+    socketService.off('video-call:cancelled', this.handleGlobalCallCancelled);
+    socketService.off('video-call:group-missed', this.handleGroupMissedNotification);
   },
   methods: {
     setupVideoCallListener() {
       console.log('🌐 [ChatPopupsManager] Setting up global video call listener');
+      console.log('🌐 [ChatPopupsManager] Socket connected:', socketService.getConnectionStatus());
+      
       // Remove existing listener first to avoid duplicates
       socketService.off('video-call:incoming', this.handleGlobalIncomingCall);
+      socketService.off('video-call:cancelled', this.handleGlobalCallCancelled);
+      socketService.off('video-call:group-missed', this.handleGroupMissedNotification);
+      
       // Setup new listener
       socketService.on('video-call:incoming', this.handleGlobalIncomingCall);
+      socketService.on('video-call:cancelled', this.handleGlobalCallCancelled);
+      socketService.on('video-call:group-missed', this.handleGroupMissedNotification);
+      
+      console.log('✅ [ChatPopupsManager] Video call listeners registered');
     },
     
     async handleOpenChatPopup({ recipientId, recipientName, recipientAvatar, conversationId }) {
       try {
+        // ❌ NGHIÊM CẤM: Không bao giờ mở ChatPopup khi đang ở trang Messages
+        if (this.$route && this.$route.path === '/messages') {
+          console.log('🚫 [ChatPopupsManager] Cannot open chat popup in Messages page - BLOCKED');
+          return;
+        }
+        
         console.log('🔵 handleOpenChatPopup called:', { recipientId, conversationId });
         console.log('🔵 Current openChats before processing:', this.openChats.map(c => ({ id: c._id, participantId: c.participant?._id })));
         
@@ -184,14 +203,24 @@ export default {
           // Fetch conversation thật từ API
           const response = await MessageAPI.createOrGetConversation(recipientId);
           if (response.status === 200 || response.status === 201) {
-            const realConversation = response.data;
-            console.log('✅ Fetched real conversation:', realConversation._id);
-          
-            // openChat sẽ tự động thay thế temp bằng real (theo participant._id)
-            this.openChat(realConversation);
-            
-            // Cập nhật store để lần sau không cần fetch nữa
+            // Reload conversations from store so we get the same formatted object
+            // that other code paths (and openChat replacement logic) expect.
             await this.$store.dispatch('loadConversations');
+
+            // Try to find the formatted conversation in the store by participant id
+            const formattedConv = (this.$store.getters.sortedConversations || []).find(conv => {
+              return !conv.isGroup && conv.participant && String(conv.participant._id) === String(recipientId);
+            });
+
+            if (formattedConv) {
+              console.log('✅ Found formatted conversation in store, opening:', formattedConv._id);
+              // openChat will replace the temp popup by matching participant._id
+              this.openChat(formattedConv);
+            } else {
+              // Fallback: if not found, open raw response (still better than nothing)
+              console.warn('⚠️ Formatted conversation not found in store, falling back to raw response');
+              this.openChat(response.data);
+            }
           }
         }
       } catch (error) {
@@ -202,6 +231,12 @@ export default {
     },
     
     openChat(conversation) {
+      // ❌ NGHIÊM CẤM: Không bao giờ mở ChatPopup khi đang ở trang Messages
+      if (this.$route && this.$route.path === '/messages') {
+        console.log('🚫 [ChatPopupsManager.openChat] Cannot open chat popup in Messages page - BLOCKED');
+        return;
+      }
+      
       // Ưu tiên: thay thế popup đã mở (theo _id hoặc participant) để tránh trùng
       const byIdIndex = this.openChats.findIndex(c => c._id === conversation._id);
 
@@ -282,15 +317,8 @@ export default {
         });
       }
       
-      // Format avatar URL properly
-      let formattedAvatar = 'https://via.placeholder.com/100';
-      if (callerAvatar) {
-        if (callerAvatar.startsWith('http')) {
-          formattedAvatar = callerAvatar;
-        } else {
-          formattedAvatar = `http://localhost:3000/uploads/user/${callerAvatar}`;
-        }
-      }
+      // Use avatar URL directly
+      const formattedAvatar = callerAvatar || 'https://via.placeholder.com/100';
       
       // Lưu thông tin cuộc gọi
       this.incomingCall = {
@@ -323,6 +351,85 @@ export default {
       showModal();
     },
     
+    handleGroupMissedNotification(data) {
+      console.log('📢📢📢 [ChatPopupsManager] ===== GROUP MISSED NOTIFICATION RECEIVED =====');
+      console.log('📢 [ChatPopupsManager] Data:', JSON.stringify(data));
+      console.log('📢 [ChatPopupsManager] Timestamp:', new Date().toISOString());
+      
+      const { callerName, duration, joinedCount, conversationId } = data;
+      
+      // DEBUG: Show alert to verify event is received
+      alert(`🔔 Bạn đã bỏ lỡ cuộc gọi nhóm từ ${callerName}\nThời lượng: ${duration}\n${joinedCount} người đã tham gia`);
+      
+      // Show toast notification (không lưu vào message history)
+      if (this.$store && this.$store.dispatch) {
+        this.$store.dispatch('addNewNotification', {
+          type: 'video_call_missed',
+          fromUser: {
+            displayName: callerName
+          },
+          content: `Bạn đã bỏ lỡ cuộc gọi nhóm từ ${callerName}`,
+          metadata: {
+            duration: duration,
+            joinedCount: joinedCount,
+            conversationId: conversationId
+          },
+          createdAt: new Date()
+        });
+        console.log('✅ [ChatPopupsManager] Notification dispatched to store');
+      } else {
+        console.error('❌ [ChatPopupsManager] Store not available!');
+      }
+      
+      console.log('✅ [ChatPopupsManager] Group missed notification shown');
+    },
+    
+    handleBrowserCallCancelled(event) {
+      console.log('🟣🟣🟣 [ChatPopupsManager] BROWSER EVENT HANDLER TRIGGERED');
+      console.log('🟣 [ChatPopupsManager] Event detail:', event.detail);
+      // Call the main handler
+      this.handleGlobalCallCancelled(event.detail);
+    },
+    
+    handleGlobalCallCancelled(data) {
+      console.log('❌❌❌ [ChatPopupsManager] ===== CALL CANCELLED HANDLER TRIGGERED =====');
+      console.log('❌ [ChatPopupsManager] Timestamp:', new Date().toISOString());
+      console.log('❌ [ChatPopupsManager] Event data:', JSON.stringify(data));
+      console.log('❌ [ChatPopupsManager] Handler function:', this.handleGlobalCallCancelled.name);
+      
+      const conversationId = data?.conversationId || data;
+      console.log('❌ [ChatPopupsManager] Call cancelled for conversation:', conversationId);
+      console.log('🔍 [ChatPopupsManager] Current incomingCall:', JSON.stringify(this.incomingCall));
+      console.log('🔍 [ChatPopupsManager] Modal ref exists:', !!this.$refs.incomingCallModal);
+      console.log('🔍 [ChatPopupsManager] Modal ref:', this.$refs.incomingCallModal);
+      console.log('🔍 [ChatPopupsManager] Component ready:', this.isComponentReady);
+      
+      // If incoming call modal is showing for this conversation, hide it
+      if (this.incomingCall.conversationId === conversationId) {
+        console.log('🔕 [ChatPopupsManager] Hiding IncomingCallModal - call was cancelled');
+        if (this.$refs.incomingCallModal) {
+          this.$refs.incomingCallModal.hide();
+          console.log('✅ [ChatPopupsManager] Modal.hide() called successfully');
+        } else {
+          console.error('❌ [ChatPopupsManager] Modal ref not found!');
+        }
+        // Clear incoming call data
+        this.incomingCall = {
+          conversationId: null,
+          callerId: null,
+          callerName: '',
+          callerAvatar: '',
+          isGroupCall: false
+        };
+        console.log('✅ [ChatPopupsManager] Incoming call data cleared');
+      } else {
+        console.log('⏭️ [ChatPopupsManager] Not hiding - conversationId mismatch:', {
+          received: conversationId,
+          current: this.incomingCall.conversationId
+        });
+      }
+    },
+    
     async onAcceptIncomingCall() {
       console.log('✅ [ChatPopupsManager] User accepted call');
       const { conversationId, callerId } = this.incomingCall;
@@ -336,51 +443,75 @@ export default {
         this.$refs.incomingCallModal.hide();
       }
       
-      // ✅ Mở popup nếu chưa có (đảm bảo có popup để start video call)
-      let popup = this.openChats.find(c => c._id === conversationId);
-      if (!popup) {
-        console.log('📞 [ChatPopupsManager] Opening popup before accepting call...');
-        try {
-          await this.handleOpenChatPopup({ conversationId });
-          popup = this.openChats.find(c => c._id === conversationId);
-          console.log('✅ [ChatPopupsManager] Popup opened:', !!popup);
-        } catch (error) {
-          console.error('❌ [ChatPopupsManager] Failed to open popup:', error);
-        }
-      }
-      
       // Emit accept to backend - backend sẽ notify caller
       socketService.emit('video-call:accept', { conversationId, callerId });
       
-      // Start video call immediately for receiver
-      this.$nextTick(() => {
-        setTimeout(() => {
-          const refName = `popup_${conversationId}`;
-          const chatPopupRef = this.$refs[refName];
-          const popup = Array.isArray(chatPopupRef) ? chatPopupRef[0] : chatPopupRef;
-          
-          console.log('🔍 [ChatPopupsManager] Looking for VideoCallModal in popup:', {
-            refName,
-            hasPopup: !!popup,
-            hasChatPopupRef: !!chatPopupRef,
-            isArray: Array.isArray(chatPopupRef),
-            hasRefs: !!popup?.$refs,
-            hasVideoCallModal: !!popup?.$refs?.videoCallModal
-          });
-          
-          if (popup && popup.$refs && popup.$refs.videoCallModal) {
-            console.log('📹 [ChatPopupsManager] Receiver joining video call');
-            
-            // joinCall() will handle the video call
-            // activeVideoCall will be cleared when call-ended event is emitted to ChatPopup
-            popup.$refs.videoCallModal.joinCall();
-          } else {
-            console.error('❌ [ChatPopupsManager] Cannot find VideoCallModal ref');
-            console.log('Available refs:', Object.keys(this.$refs));
-            console.log('Popup refs:', popup?.$refs ? Object.keys(popup.$refs) : 'none');
+      // ✅ CHECK: Xem user đang ở trang Message hay không
+      const isOnMessagesPage = this.$route && this.$route.path === '/messages';
+      console.log('📍 [ChatPopupsManager] User location:', isOnMessagesPage ? 'Messages page' : 'Other page');
+      
+      if (isOnMessagesPage) {
+        // ✅ Trường hợp 1: Đang ở trang Message.vue
+        console.log('📞 [ChatPopupsManager] On Messages page - delegating to Message.vue');
+        
+        // Emit event để Message.vue xử lý
+        eventBus.$emit('accept-incoming-call-in-message', { conversationId, callerId });
+        
+        // Hoặc dùng router để truyền info
+        this.$router.push({
+          path: '/messages',
+          query: { 
+            acceptCall: conversationId,
+            callerId: callerId
           }
-        }, 200); // Increased timeout to ensure ref is ready
-      });
+        });
+      } else {
+        // ✅ Trường hợp 2: Đang ở trang khác → Dùng ChatPopup
+        console.log('📞 [ChatPopupsManager] Not on Messages page - using ChatPopup');
+        
+        // Mở popup nếu chưa có (đảm bảo có popup để start video call)
+        let popup = this.openChats.find(c => c._id === conversationId);
+        if (!popup) {
+          console.log('📞 [ChatPopupsManager] Opening popup before accepting call...');
+          try {
+            await this.handleOpenChatPopup({ conversationId });
+            popup = this.openChats.find(c => c._id === conversationId);
+            console.log('✅ [ChatPopupsManager] Popup opened:', !!popup);
+          } catch (error) {
+            console.error('❌ [ChatPopupsManager] Failed to open popup:', error);
+          }
+        }
+        
+        // Start video call immediately for receiver
+        this.$nextTick(() => {
+          setTimeout(() => {
+            const refName = `popup_${conversationId}`;
+            const chatPopupRef = this.$refs[refName];
+            const popup = Array.isArray(chatPopupRef) ? chatPopupRef[0] : chatPopupRef;
+            
+            console.log('🔍 [ChatPopupsManager] Looking for VideoCallModal in popup:', {
+              refName,
+              hasPopup: !!popup,
+              hasChatPopupRef: !!chatPopupRef,
+              isArray: Array.isArray(chatPopupRef),
+              hasRefs: !!popup?.$refs,
+              hasVideoCallModal: !!popup?.$refs?.videoCallModal
+            });
+            
+            if (popup && popup.$refs && popup.$refs.videoCallModal) {
+              console.log('📹 [ChatPopupsManager] Receiver joining video call via ChatPopup');
+              
+              // joinCall() will handle the video call
+              // activeVideoCall will be cleared when call-ended event is emitted to ChatPopup
+              popup.$refs.videoCallModal.joinCall();
+            } else {
+              console.error('❌ [ChatPopupsManager] Cannot find VideoCallModal ref');
+              console.log('Available refs:', Object.keys(this.$refs));
+              console.log('Popup refs:', popup?.$refs ? Object.keys(popup.$refs) : 'none');
+            }
+          }, 200); // Increased timeout to ensure ref is ready
+        });
+      }
     },
     
     onRejectIncomingCall() {

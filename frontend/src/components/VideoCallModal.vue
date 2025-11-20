@@ -294,7 +294,15 @@ export default {
       socketService.on('video-call:user-joined', async ({ userId, userName }) => {
         console.log(`👤 [${role}] User joined:`, userId, userName);
         console.log(`👤 [${role}] Current remotePeers count:`, this.remotePeers.length);
-        await this.createPeerConnection(userId, userName, true);
+        console.log(`👤 [${role}] Current user ID:`, this.$store.state.user?._id);
+        
+        // Determine who should initiate based on user ID comparison
+        // The user with smaller ID (lexicographically) initiates
+        const currentUserId = this.$store.state.user?._id;
+        const shouldInitiate = currentUserId < userId;
+        
+        console.log(`👤 [${role}] Should I initiate with ${userId}? ${shouldInitiate}`);
+        await this.createPeerConnection(userId, userName, shouldInitiate);
       });
 
       // Receive offer
@@ -318,6 +326,14 @@ export default {
         if (pc && candidate) {
           await pc.addIceCandidate(new RTCIceCandidate(candidate));
         }
+      });
+
+      // User rejected call (for group calls)
+      socketService.on('video-call:rejected', ({ userId, userName }) => {
+        console.log('👎 User rejected call:', userId, userName);
+        // In group call, someone rejected but call continues
+        // Just show a notification (optional) but don't end call
+        // The participant count will be correct since they never joined remotePeers
       });
 
       // User left call
@@ -353,6 +369,19 @@ export default {
     async createPeerConnection(userId, userName, isInitiator) {
       const role = this.isCaller ? 'Caller' : 'Receiver';
       console.log(`🔗 [${role}] Creating peer connection for:`, userId, userName, 'isInitiator:', isInitiator);
+      
+      // Check if peer connection already exists
+      if (this.peerConnections.has(userId)) {
+        console.log(`⚠️ [${role}] Peer connection already exists for ${userId}, skipping`);
+        return;
+      }
+      
+      // Check if peer already in remotePeers
+      const existingPeer = this.remotePeers.find(p => p.userId === userId);
+      if (existingPeer) {
+        console.log(`⚠️ [${role}] Peer ${userId} already in remotePeers, skipping`);
+        return;
+      }
       
       const pc = new RTCPeerConnection({ iceServers: this.iceServers });
       this.peerConnections.set(userId, pc);
@@ -403,6 +432,8 @@ export default {
         isMicOn: true,
         isCameraOn: true
       });
+      
+      console.log(`✅ [${role}] Added to remotePeers. Total participants: ${this.remotePeers.length + 1}`);
 
       // If initiator, create and send offer
       if (isInitiator) {
@@ -548,9 +579,12 @@ export default {
 
     endCall(forceCreateMessage = false) {
       const duration = this.callDuration;
-      const shouldCreateMessage = forceCreateMessage || this.isCaller;
+      // Trong group call: người cuối cùng rời (remotePeers = 0) HOẶC khi còn <=1 người thì tạo message
+      // Trong 1-1 call: chỉ caller tạo message
+      const isLastOrSecondLastInGroupCall = this.isGroupCall && this.remotePeers.length <= 1;
+      const shouldCreateMessage = forceCreateMessage || this.isCaller || isLastOrSecondLastInGroupCall;
       
-      console.log(`📞 Ending call - isCaller: ${this.isCaller}, shouldCreateMessage: ${shouldCreateMessage}, duration: ${duration}s`);
+      console.log(`📞 Ending call - isCaller: ${this.isCaller}, isGroupCall: ${this.isGroupCall}, remotePeers: ${this.remotePeers.length}, shouldCreateMessage: ${shouldCreateMessage}, duration: ${duration}s`);
       
       // Stop duration timer
       if (this.durationInterval) {

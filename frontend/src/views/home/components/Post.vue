@@ -6,7 +6,7 @@
           <img
             v-if="user.profilePicture"
             class="image-post__img"
-            :src="`http://localhost:3000/uploads/user/${user.profilePicture}`"
+            :src="user.profilePicture"
           />
           <img
             v-else

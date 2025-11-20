@@ -55,7 +55,7 @@
         <div class="friend" v-for="user in filteredUsers" :key="user._id" @click="openChat(user)">
           <div class="friend-info">
             <div class="avatar-wrapper">
-              <img v-if="user.profilePicture" class="image-post__img" :src="`http://localhost:3000/uploads/user/${user.profilePicture}`" />
+              <img v-if="user.profilePicture" class="image-post__img" :src="user.profilePicture" />
               <img v-else class="image-post__img" src="@/assets/defaultProfile.png" />
               <span v-if="user.isOnline" class="online-dot"></span>
             </div>

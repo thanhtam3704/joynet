@@ -141,6 +141,16 @@
       :is-group-call="activeConversation.isGroup || false"
       @call-ended="onCallEnded"
     />
+
+    <!-- Incoming Call Modal -->
+    <IncomingCallModal
+      ref="incomingCallModal"
+      :callerName="incomingCall.callerName"
+      :callerAvatar="incomingCall.callerAvatar"
+      :isGroupCall="incomingCall.isGroupCall"
+      @accept="onAcceptIncomingCall"
+      @reject="onRejectIncomingCall"
+    />
   </div>
 </template>
 
@@ -152,8 +162,11 @@ import MessageInput from './components/MessageInput.vue';
 import NewConversationModal from './components/NewConversationModal.vue';
 import VideoCallModal from '@/components/VideoCallModal.vue';
 import CallingModal from '@/components/CallingModal.vue';
+import IncomingCallModal from '@/components/IncomingCallModal.vue';
 import MessageAPI from '../../api/messages';
+import { getSuggestedContacts } from '../../api/users';
 import socketService from '../../services/socketService';
+import { eventBus } from '@/utils/eventBus';
 
 export default {
   name: 'Message',
@@ -164,11 +177,14 @@ export default {
     MessageInput,
     NewConversationModal,
     VideoCallModal,
-    CallingModal
+    CallingModal,
+    IncomingCallModal
   },
   data() {
     return {
       conversations: [],
+      contacts: [], // Danh sách người liên hệ
+      contactsLoaded: false,
       messages: [],
       activeConversationId: null,
       searchQuery: '',
@@ -183,7 +199,14 @@ export default {
       messagePollingInterval: null,
       conversationPollingInterval: null,
       totalUnreadCount: 0,
-      activityInterval: null
+      activityInterval: null,
+      incomingCall: {
+        conversationId: null,
+        callerId: null,
+        callerName: '',
+        callerAvatar: '',
+        isGroupCall: false
+      }
     };
   },
   errorCaptured(err, vm, info) {
@@ -205,11 +228,38 @@ export default {
         return null;
       }
     },
+    allConversations() {
+      // Kết hợp conversations và contacts
+      const conversationIds = new Set(this.conversations.map(c => {
+        if (c.isGroup) return null;
+        return c.recipientId;
+      }).filter(Boolean));
+      
+      // Contacts chưa có conversation
+      const contactsOnly = this.contacts.filter(contact => 
+        !conversationIds.has(contact._id)
+      ).map(contact => ({
+        _id: contact._id,
+        isGroup: false,
+        isContactOnly: true,
+        recipientId: contact._id,
+        recipientName: contact.displayName || contact.email,
+        recipientEmail: contact.email,
+        recipientAvatar: contact.profilePicture,
+        recipientIsOnline: contact.isOnline,
+        recipientLastSeen: contact.lastSeen,
+        lastMessage: '',
+        lastMessageTime: null,
+        unread: 0
+      }));
+      
+      return [...this.conversations, ...contactsOnly];
+    },
     filteredConversations() {
       try {
-        if (!this.searchQuery) return this.conversations || [];
+        if (!this.searchQuery) return this.allConversations || [];
         
-        return (this.conversations || []).filter(conversation => {
+        return (this.allConversations || []).filter(conversation => {
           if (!conversation) return false;
           // Filter by name or last message content
           const name = conversation.recipientName || '';
@@ -240,8 +290,12 @@ export default {
         const allUsers = [];
         const userIds = new Set();
         
+        // Ensure friends is an array
+        const friendsList = Array.isArray(this.friends) ? this.friends : [];
+        const conversationsList = Array.isArray(this.conversations) ? this.conversations : [];
+        
         // Thêm friends trước
-        (this.friends || []).forEach(friend => {
+        friendsList.forEach(friend => {
           if (friend && friend._id && !userIds.has(friend._id)) {
             allUsers.push({
               _id: friend._id,
@@ -255,7 +309,7 @@ export default {
         });
         
         // Thêm những người đã có conversation nhưng chưa có trong friends
-        (this.conversations || []).forEach(conv => {
+        conversationsList.forEach(conv => {
           if (conv && conv.recipientId && !userIds.has(conv.recipientId)) {
             allUsers.push({
               _id: conv.recipientId,
@@ -271,7 +325,7 @@ export default {
         return allUsers;
       } catch (error) {
         console.error('Error in allAvailableUsers:', error);
-        return this.friends || [];
+        return [];
       }
     }
   },
@@ -371,6 +425,21 @@ export default {
         this.isLoading = false;
       }
     },
+    async loadContacts() {
+      if (this.contactsLoaded) return;
+      
+      try {
+        const response = await getSuggestedContacts(50, 0);
+        if (response && response.data && response.data.users) {
+          this.contacts = response.data.users;
+          this.contactsLoaded = true;
+          console.log('✅ Đã load', this.contacts.length, 'người liên hệ');
+        }
+      } catch (error) {
+        console.error('Error loading contacts:', error);
+        this.contacts = [];
+      }
+    },
     async loadMessages(conversationId) {
       this.isLoading = true;
       try {
@@ -395,18 +464,37 @@ export default {
               };
             });
             
+            // ✅ Transform special call cancel codes
+            let displayContent = msg.content || '';
+            const isMyMessage = String(sender._id) === String(this.currentUserId);
+            
+            if (displayContent === '📞 CALL_CANCELLED_GROUP' || displayContent === '📞 CALL_CANCELLED') {
+              if (isMyMessage) {
+                // Mình gọi → Đã hủy
+                displayContent = displayContent === '📞 CALL_CANCELLED_GROUP'
+                  ? '📞 Bạn đã hủy cuộc gọi nhóm'
+                  : '📞 Bạn đã hủy cuộc gọi';
+              } else {
+                // Người khác gọi → Bỏ lỡ
+                displayContent = displayContent === '📞 CALL_CANCELLED_GROUP' 
+                  ? '📞 Cuộc gọi nhóm đã bị bỏ lỡ'
+                  : '📞 Cuộc gọi đã bị bỏ lỡ';
+              }
+            }
+            
             return {
               _id: msg._id || '',
               senderId: sender._id || null,
               senderName: sender.displayName || '',
               senderAvatar: sender.profilePicture || null,
-              content: msg.content || '',
+              sender: sender, // ✅ Giữ lại sender object để ChatMessages.vue có thể dùng sender.profilePicture
+              content: displayContent, // ✅ Sử dụng transformed content
               messageType: msg.messageType || 'text',
               file: msg.file || null,
               originalFileName: msg.originalFileName || null,
               readBy: msg.readBy || [],
               timestamp: msg.createdAt ? new Date(msg.createdAt) : new Date(),
-              isMyMessage: String(sender._id) === String(this.currentUserId), // Thêm flag rõ ràng
+              isMyMessage: isMyMessage, // ✅ Đã tính toán ở trên
               reactions: reactions // Thêm reactions đã map
             };
           });
@@ -422,6 +510,23 @@ export default {
       }
     },
     async selectConversation(conversationId) {
+      // Handle contact-only items (no existing conversation)
+      const item = this.allConversations.find(c => c._id === conversationId);
+      if (item && item.isContactOnly) {
+        try {
+          // Create or get conversation with this contact
+          const response = await MessageAPI.createOrGetConversation(item.recipientId);
+          if (response && response.data) {
+            conversationId = response.data._id;
+            // Reload conversations to include the newly created one
+            await this.loadConversations();
+          }
+        } catch (error) {
+          console.error('Error creating conversation:', error);
+          return;
+        }
+      }
+      
       // Leave previous conversation room
       if (this.activeConversationId && socketService.getConnectionStatus()) {
         socketService.leaveConversation(this.activeConversationId);
@@ -443,7 +548,10 @@ export default {
       
       // Mark messages as read on server
       try {
-        await MessageAPI.markAsRead(conversationId);
+        // Skip if temporary conversation
+        if (!conversationId.startsWith('temp_')) {
+          await MessageAPI.markAsRead(conversationId);
+        }
         
         // Cập nhật unread count local
         this.loadUnreadCount();
@@ -564,8 +672,12 @@ export default {
       try {
         // Add message to UI immediately (optimistic update)
         let fileUrl = null;
+        let isImagePreview = false;
         if (messageData.file) {
-          fileUrl = URL.createObjectURL(messageData.file);
+          if (messageData.file.type.startsWith('image/')) {
+            fileUrl = URL.createObjectURL(messageData.file);
+            isImagePreview = true;
+          }
         }
         
         const tempMessage = {
@@ -575,14 +687,15 @@ export default {
           senderAvatar: this.user.profilePicture || null,
           content: messageData.content || '',
           messageType: messageData.messageType || 'text',
-          file: messageData.file ? messageData.file.name : null,
+          file: isImagePreview ? fileUrl : (messageData.file ? messageData.file.name : null),
           originalFileName: messageData.file ? messageData.file.name : null,
           fileUrl: fileUrl,
           fileName: messageData.file ? messageData.file.name : null,
           readBy: [{ user: this.currentUserId }],
           timestamp: new Date(),
           isSending: true,
-          isMyMessage: true // Flag rõ ràng cho tin nhắn của tôi
+          isMyMessage: true, // Flag rõ ràng cho tin nhắn của tôi
+          isTempPreview: isImagePreview // Flag để revoke URL sau
         };
         
         this.messages.push(tempMessage);
@@ -593,6 +706,11 @@ export default {
         // Replace temp message with server response
         const index = this.messages.findIndex(m => m._id === tempMessage._id);
         if (index !== -1 && response && response.data) {
+          // Revoke blob URL nếu là image preview
+          if (this.messages[index].isTempPreview && this.messages[index].file) {
+            URL.revokeObjectURL(this.messages[index].file);
+          }
+          
           const responseData = response.data;
           const sender = responseData.sender || {};
           
@@ -622,9 +740,12 @@ export default {
         
       } catch (error) {
         console.error('Error sending message:', error);
-        // Remove temp message on error
+        // Remove temp message on error and revoke URL
         const index = this.messages.findIndex(m => m._id.startsWith('temp_'));
         if (index !== -1) {
+          if (this.messages[index].isTempPreview && this.messages[index].file) {
+            URL.revokeObjectURL(this.messages[index].file);
+          }
           this.messages.splice(index, 1);
         }
       }
@@ -633,7 +754,17 @@ export default {
     async loadFriends() {
       try {
         const response = await MessageAPI.getFriends();
-        this.friends = response.data;
+        // Backend returns { users: [...], total: ..., hasMore: ... }
+        if (Array.isArray(response.data)) {
+          this.friends = response.data;
+        } else if (response.data && Array.isArray(response.data.users)) {
+          this.friends = response.data.users;
+        } else if (response.data && Array.isArray(response.data.friends)) {
+          this.friends = response.data.friends;
+        } else {
+          console.warn('getFriends returned unexpected format:', response.data);
+          this.friends = [];
+        }
       } catch (error) {
         console.error('Error loading friends:', error);
         // Fallback to empty friends list if API fails
@@ -792,10 +923,19 @@ export default {
     // Listen for new messages
     socketService.onNewMessage((data) => {
       console.log('📨 Message.vue received newMessage:', data);
+      console.log('📨 Full data structure:', JSON.stringify(data, null, 2));
       
       // Extract message from data (backend sends { conversationId, message })
       const messageData = data.message || data;
       const receivedConversationId = data.conversationId || messageData.conversationId;
+      
+      // 🔥 DEBUG: Log sender info at reception
+      console.log('🔥 [DEBUG] Raw messageData.sender:', messageData.sender);
+      console.log('🔥 [DEBUG] Sender type:', typeof messageData.sender);
+      console.log('🔥 [DEBUG] Sender profilePicture:', messageData.sender?.profilePicture);
+      
+      console.log('📨 messageData:', messageData);
+      console.log('📨 messageData.sender:', messageData.sender);
       
       // Add message to current conversation if it matches
       if (receivedConversationId === this.activeConversationId) {
@@ -804,39 +944,120 @@ export default {
         const myUserId = String(this.currentUserId);
         const isFromOtherUser = messageSenderId !== myUserId;
         
-        if (isFromOtherUser) {
+        console.log('📨 Checking message:', {
+          messageSenderId,
+          myUserId,
+          isFromOtherUser,
+          content: messageData.content
+        });
+        
+        // Kiểm tra nếu là tin nhắn cuộc gọi (luôn hiển thị)
+        const content = messageData.content || '';
+        const isMissedCallMessage = content.includes('📞 Đã bỏ lỡ') || content.includes('📞 Cuộc gọi đã bị bỏ lỡ') || content.includes('📞 Cuộc gọi nhóm đã bị bỏ lỡ');
+        const isCancelledCallMessage = content.includes('📞 Bạn đã hủy cuộc gọi') || content.includes('📞 đã gọi cho bạn');
+        const isCallEndMessage = content.includes('🎥📞 Cuộc gọi video kết thúc') || content.includes('🎥📞 Cuộc gọi nhóm kết thúc');
+        const isCallMessage = isMissedCallMessage || isCancelledCallMessage || isCallEndMessage;
+        
+        console.log('📨 isCallMessage:', isCallMessage, { isMissedCallMessage, isCancelledCallMessage, isCallEndMessage });
+        
+        if (isFromOtherUser || isCallMessage) {
+          // ✅ Check duplicate message - Prevent showing same message twice
+          const messageExists = this.messages.some(m => m._id === messageData._id);
+          if (messageExists) {
+            console.log('⏭️ [Message.vue] Duplicate message detected, skipping:', messageData._id);
+            return;
+          }
+          
           // Bỏ qua các thông điệp rỗng (không có text, không có file/media)
           const hasText = typeof messageData.content === 'string' && messageData.content.trim().length > 0;
           const hasMedia = !!messageData.file || messageData.messageType === 'image' || messageData.messageType === 'file';
           if (!(hasText || hasMedia)) {
+            console.log('⏭️ Skipping empty message');
             return; // không hiển thị bong bóng trống
           }
           
           // ✅ Populate sender info từ messageData.sender (backend đã populate)
           const sender = messageData.sender || {};
-          console.log('📨 Sender info:', sender);
+          console.log('📨 Sender info extracted:', {
+            senderId: sender._id,
+            displayName: sender.displayName,
+            profilePicture: sender.profilePicture
+          });
           
-          // ✅ Chỉ thêm tin nhắn từ người khác và chuẩn hóa format
+          // ✅ Logic hiển thị tin nhắn cuộc gọi:
+          // Special codes từ backend:
+          // - "📞 CALL_CANCELLED_GROUP" → Transform based on sender
+          // - "📞 CALL_CANCELLED" → Transform based on sender
+          let displayContent = content;
+          let shouldDisplayAsIncoming;
+          
+          if (content === '📞 CALL_CANCELLED_GROUP' || content === '📞 CALL_CANCELLED') {
+            // Transform content dựa vào ai là sender
+            if (isFromOtherUser) {
+              // Người khác gọi → Bỏ lỡ
+              displayContent = content === '📞 CALL_CANCELLED_GROUP' 
+                ? '📞 Cuộc gọi nhóm đã bị bỏ lỡ'
+                : '📞 Cuộc gọi đã bị bỏ lỡ';
+              shouldDisplayAsIncoming = true;
+            } else {
+              // Mình gọi → Đã hủy
+              displayContent = content === '📞 CALL_CANCELLED_GROUP'
+                ? '📞 Bạn đã hủy cuộc gọi nhóm'
+                : '📞 Bạn đã hủy cuộc gọi';
+              shouldDisplayAsIncoming = false;
+            }
+          } else {
+            // Tin nhắn thường
+            const isYouCancelled = content.includes('Bạn đã hủy');
+            
+            if (isYouCancelled) {
+              shouldDisplayAsIncoming = false;
+            } else if (isMissedCallMessage) {
+              shouldDisplayAsIncoming = true;
+            } else {
+              shouldDisplayAsIncoming = isFromOtherUser;
+            }
+          }
+          
+          console.log('🔍 [Message.vue] Call message detection:', {
+            originalContent: content.substring(0, 50),
+            displayContent: displayContent.substring(0, 50),
+            isFromOtherUser,
+            messageSenderId,
+            myUserId,
+            shouldDisplayAsIncoming
+          });
+          
+          // ✅ Chuẩn hóa format và giữ lại sender object để ChatMessages có thể dùng
           const messageWithFlag = {
             _id: messageData._id,
             senderId: sender._id || messageData.senderId,
             senderName: sender.displayName || messageData.senderName || '',
             senderAvatar: sender.profilePicture || messageData.senderAvatar || null,
-            content: messageData.content || '',
+            sender: sender, // ✅ Giữ lại sender object để ChatMessages.vue có thể dùng sender.profilePicture
+            content: displayContent, // ✅ Sử dụng transformed content
             messageType: messageData.messageType || 'text', 
             file: messageData.file || null,
             originalFileName: messageData.originalFileName || null,
             readBy: messageData.readBy || [],
             timestamp: messageData.createdAt ? new Date(messageData.createdAt) : new Date(),
-            isMyMessage: false,
+            isMyMessage: !shouldDisplayAsIncoming, // ✅ Sử dụng calculated shouldDisplayAsIncoming
             reactions: messageData.reactions || []
           };
           
-          console.log('📨 Adding message with avatar:', messageWithFlag.senderAvatar);
+          console.log('✅ Adding message to UI:', {
+            _id: messageWithFlag._id,
+            content: messageWithFlag.content,
+            sender: messageWithFlag.sender,
+            senderAvatar: messageWithFlag.senderAvatar,
+            isMyMessage: messageWithFlag.isMyMessage
+          });
           
           this.messages.push(messageWithFlag);
           this.scrollToBottom();
           this.markAsRead(receivedConversationId);
+        } else {
+          console.log('⏭️ Skipping message from myself (not a call message)');
         }
       }
       
@@ -927,6 +1148,11 @@ export default {
     },
 
     async markAsRead(conversationId) {
+      // Skip if temporary conversation
+      if (!conversationId || conversationId.startsWith('temp_')) {
+        return;
+      }
+      
       try {
         await MessageAPI.markAsRead(conversationId);
       } catch (error) {
@@ -961,13 +1187,6 @@ export default {
 
       console.log('📞 [Message.vue] Participants to notify:', participants);
 
-      // Emit call start - backend will notify other users
-      socketService.emit('video-call:start', {
-        conversationId: this.activeConversation._id,
-        participants: participants,
-        isGroupCall: this.activeConversation.isGroup || false
-      });
-
       // Reset cancel flag for new call
       this._callCancelled = false;
       
@@ -988,7 +1207,7 @@ export default {
         }
       }, 45000);
 
-      // Listen for when someone accepts - use arrow function to preserve context
+      // ✅ Setup listeners BEFORE emitting call start to avoid race condition
       const acceptedHandler = () => {
         console.log('✅ [Message.vue] Call accepted by recipient');
         console.log('🎬 [Message.vue] Hiding calling modal and starting video');
@@ -1031,7 +1250,6 @@ export default {
         }
       };
       
-      // Listen for when someone rejects
       const rejectedHandler = () => {
         console.log('❌ [Message.vue] Call rejected by recipient');
         console.log('📞 [Message.vue] Conversation ID:', this.activeConversation._id);
@@ -1058,13 +1276,20 @@ export default {
         }
       };
       
-      console.log('🎧 [Message.vue] Setting up video-call:rejected listener');
+      console.log('🎧 [Message.vue] Setting up listeners BEFORE emitting call start');
       socketService.on('video-call:accepted', acceptedHandler);
       socketService.on('video-call:rejected', rejectedHandler);
       
       // Store handlers for cleanup
       this._acceptedHandler = acceptedHandler;
       this._rejectedHandler = rejectedHandler;
+
+      // ✅ Emit call start AFTER listeners are ready
+      socketService.emit('video-call:start', {
+        conversationId: this.activeConversation._id,
+        participants: participants,
+        isGroupCall: this.activeConversation.isGroup || false
+      });
     },
 
     onVideoCallEnded() {
@@ -1125,35 +1350,87 @@ export default {
       }
     },
 
-    handleIncomingCall({ conversationId, callerId, callerName, isGroupCall }) {
+    handleIncomingCall({ conversationId, callerId, callerName, callerAvatar, isGroupCall }) {
       console.log('📞 [Message.vue] Incoming call received:', { conversationId, callerId, callerName, isGroupCall });
-      console.log('📞 [Message.vue] Active conversation ID:', this.activeConversationId);
       
-      // Only show incoming call if it's for the active conversation or not in any conversation
-      if (!this.activeConversationId || conversationId === this.activeConversationId) {
-        console.log('✅ [Message.vue] Showing incoming call confirm');
-        const answer = confirm(`${callerName} đang gọi ${isGroupCall ? 'video nhóm' : 'video'}. Chấp nhận?`);
-        if (answer) {
-          console.log('✅ [Message.vue] Call accepted');
-          // If not in conversation, select it first
-          if (conversationId !== this.activeConversationId) {
-            this.selectConversation({ _id: conversationId });
-          }
-          // Notify caller that call was accepted
-          socketService.emit('video-call:accept', { conversationId, callerId });
-          // Start video call immediately for receiver
-          this.$nextTick(() => {
-            if (this.$refs.videoCallModal) {
-              this.$refs.videoCallModal.startCall();
-            }
-          });
-        } else {
-          console.log('❌ [Message.vue] Call rejected');
-          socketService.emit('video-call:reject', { conversationId, callerId });
-        }
-      } else {
-        console.log('⚠️ [Message.vue] Call ignored - different conversation');
+      // Check if user is logged in before showing modal
+      if (!this.currentUserId) {
+        console.warn('⚠️ [Message.vue] User not logged in, ignoring incoming call');
+        return;
       }
+      
+      // Store incoming call info
+      this.incomingCall = {
+        conversationId,
+        callerId,
+        callerName,
+        callerAvatar: callerAvatar || null,
+        isGroupCall
+      };
+      
+      // Show incoming call modal
+      if (this.$refs.incomingCallModal) {
+        this.$refs.incomingCallModal.show();
+        console.log('✅ [Message.vue] Showing IncomingCallModal');
+      } else {
+        console.error('❌ [Message.vue] IncomingCallModal ref not found');
+      }
+    },
+    
+    handleCallCancelled({ conversationId }) {
+      console.log('❌ [Message.vue] Call cancelled by caller:', conversationId);
+      console.log('🔍 [Message.vue] Current incomingCall:', this.incomingCall);
+      console.log('🔍 [Message.vue] Modal ref exists:', !!this.$refs.incomingCallModal);
+      
+      // If incoming call modal is showing for this conversation, hide it
+      if (this.incomingCall.conversationId === conversationId) {
+        console.log('🔕 [Message.vue] Hiding IncomingCallModal - call was cancelled');
+        if (this.$refs.incomingCallModal) {
+          this.$refs.incomingCallModal.hide();
+          console.log('✅ [Message.vue] Modal hidden successfully');
+        } else {
+          console.error('❌ [Message.vue] Modal ref not found!');
+        }
+        // Clear incoming call data
+        this.incomingCall = {
+          conversationId: null,
+          callerId: null,
+          callerName: '',
+          callerAvatar: '',
+          isGroupCall: false
+        };
+      } else {
+        console.log('⏭️ [Message.vue] Not hiding - conversationId mismatch:', {
+          received: conversationId,
+          current: this.incomingCall.conversationId
+        });
+      }
+    },
+    
+    onAcceptIncomingCall() {
+      console.log('✅ [Message.vue] Call accepted');
+      const { conversationId, callerId } = this.incomingCall;
+      
+      // If not in conversation, select it first
+      if (conversationId !== this.activeConversationId) {
+        this.selectConversation({ _id: conversationId });
+      }
+      
+      // Notify caller that call was accepted
+      socketService.emit('video-call:accept', { conversationId, callerId });
+      
+      // Start video call immediately for receiver
+      this.$nextTick(() => {
+        if (this.$refs.videoCallModal) {
+          this.$refs.videoCallModal.startCall();
+        }
+      });
+    },
+    
+    onRejectIncomingCall() {
+      console.log('❌ [Message.vue] Call rejected');
+      const { conversationId, callerId } = this.incomingCall;
+      socketService.emit('video-call:reject', { conversationId, callerId });
     },
 
     getRecipientName(conversation) {
@@ -1170,27 +1447,83 @@ export default {
         return conversation.groupAvatar || null;
       }
       return conversation.recipientAvatar || null;
+    },
+    
+    async handleAcceptCallFromGlobal({ conversationId, callerId }) {
+      console.log('✅ [Message.vue] Handling accept call from global:', { conversationId, callerId });
+      
+      // Select conversation if not already selected
+      if (conversationId !== this.activeConversationId) {
+        console.log('📞 [Message.vue] Switching to conversation:', conversationId);
+        await this.selectConversation(conversationId);
+      }
+      
+      // Wait for VideoCallModal ref to be ready
+      this.$nextTick(() => {
+        setTimeout(() => {
+          if (this.$refs.videoCallModal) {
+            console.log('📹 [Message.vue] Starting video call via VideoCallModal.joinCall()');
+            
+            // Mark as active call in global manager
+            if (window.ChatPopupsManager) {
+              window.ChatPopupsManager.activeVideoCall = { conversationId };
+              console.log('✅ [Message.vue] Set activeVideoCall for receiver:', window.ChatPopupsManager.activeVideoCall);
+            }
+            
+            // Join the call
+            this.$refs.videoCallModal.joinCall();
+          } else {
+            console.error('❌ [Message.vue] VideoCallModal ref not found');
+          }
+        }, 300);
+      });
     }
   },
   async mounted() {
     try {
       console.log('📱 [Message.vue] Component mounted - initializing...');
+      
+      // Load user first - check authentication
       await this.$store.dispatch('loadUser');
       
-      // Initialize WebSocket connection
+      // Only proceed if user is logged in
+      if (!this.$store.state.user || !this.$store.state.user._id) {
+        console.warn('⚠️ [Message.vue] User not logged in, redirecting...');
+        this.$router.push('/login');
+        return;
+      }
+      
+      // Initialize WebSocket connection after authentication
       console.log('🔌 [Message.vue] Starting WebSocket initialization...');
       this.initializeWebSocket();
       
-      // Setup video call listener
-      socketService.on('video-call:incoming', this.handleIncomingCall);
+      // ✅ DON'T listen to video-call:incoming here - ChatPopupsManager handles it globally
+      // This prevents duplicate modals when both components are mounted
+      // socketService.on('video-call:incoming', this.handleIncomingCall);
+      socketService.on('video-call:cancelled', this.handleCallCancelled);
+      
+      // ✅ Listen for global accept call event from ChatPopupsManager
+      eventBus.$on('accept-incoming-call-in-message', this.handleAcceptCallFromGlobal);
       
       this.loadConversations();
       this.loadFriends();
+      this.loadContacts();
       
       // If conversation ID is in route, select it
       if (this.$route.params.id) {
         this.activeConversationId = this.$route.params.id;
         this.loadMessages(this.$route.params.id);
+      }
+      
+      // ✅ Check if accepting call from route query
+      if (this.$route.query.acceptCall) {
+        const conversationId = this.$route.query.acceptCall;
+        const callerId = this.$route.query.callerId;
+        console.log('📞 [Message.vue] Accepting call from route query:', { conversationId, callerId });
+        this.handleAcceptCallFromGlobal({ conversationId, callerId });
+        
+        // Clear query params
+        this.$router.replace({ path: '/messages' });
       }
       
       // Khôi phục trạng thái sidebar từ localStorage (nếu có)
@@ -1210,7 +1543,9 @@ export default {
   beforeUnmount() {
     this.stopPolling();
     this.cleanupWebSocket();
-    socketService.off('video-call:incoming', this.handleIncomingCall);
+    // socketService.off('video-call:incoming', this.handleIncomingCall); // Already commented out in mounted
+    socketService.off('video-call:cancelled', this.handleCallCancelled);
+    eventBus.$off('accept-incoming-call-in-message', this.handleAcceptCallFromGlobal);
   },
   watch: {
     '$route.params.id'(newId) {
@@ -1406,6 +1741,16 @@ export default {
   flex-shrink: 0;
   background: white;
   overflow: hidden;
+  
+  /* Đảm bảo ConversationList có thể scroll */
+  > * {
+    flex-shrink: 0;
+  }
+  
+  > :last-child {
+    flex: 1;
+    min-height: 0;
+  }
 }
 
 .message-header {

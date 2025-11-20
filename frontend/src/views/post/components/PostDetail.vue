@@ -58,7 +58,7 @@
           <img
             v-if="posts.file"
             class="post-detail-main-img"
-            :src="`http://localhost:3000/uploads/${posts.file}`"
+            :src="posts.file"
           />
         </div>
       </div>
@@ -123,7 +123,7 @@
               <img
                 v-if="comment.file"
                 class="comment-img"
-                :src="`http://localhost:3000/uploads/${comment.file}`"
+                :src="comment.file"
               />
             </div>
           </div>
@@ -161,40 +161,44 @@
     </div>
 
     <!-- Edit Comment Modal -->
-    <div v-if="showEditCommentModal" class="edit-modal-overlay" @click="cancelEditComment">
-      <div class="edit-modal" @click.stop>
-        <div class="edit-modal-header">
-          <h3>Sửa bình luận</h3>
-          <button @click="cancelEditComment" class="close-btn">
-            <i class="material-icons">close</i>
-          </button>
-        </div>
-        <div class="edit-modal-body">
-          <textarea 
-            v-model="editingCommentContent"
-            placeholder="Nhập nội dung bình luận..."
-            ref="editCommentTextarea"
-            @keydown.enter.ctrl="saveEditComment"
-          ></textarea>
-        </div>
-        <div class="edit-modal-footer">
-          <button @click="cancelEditComment" class="btn-cancel">Hủy</button>
-          <button @click="saveEditComment" class="btn-save" :disabled="!editingCommentContent.trim()">Lưu</button>
+    <teleport to="body">
+      <div v-if="showEditCommentModal" class="edit-modal-overlay" @click="cancelEditComment">
+        <div class="edit-modal" @click.stop>
+          <div class="edit-modal-header">
+            <h3>Sửa bình luận</h3>
+            <button @click="cancelEditComment" class="close-btn">
+              <i class="material-icons">close</i>
+            </button>
+          </div>
+          <div class="edit-modal-body">
+            <textarea 
+              v-model="editingCommentContent"
+              placeholder="Nhập nội dung bình luận..."
+              ref="editCommentTextarea"
+              @keydown.enter.ctrl="saveEditComment"
+            ></textarea>
+          </div>
+          <div class="edit-modal-footer">
+            <button @click="cancelEditComment" class="btn-cancel">Hủy</button>
+            <button @click="saveEditComment" class="btn-save" :disabled="!editingCommentContent.trim()">Lưu</button>
+          </div>
         </div>
       </div>
-    </div>
+    </teleport>
 
     <!-- Delete Comment Confirmation Modal -->
-    <div v-if="showDeleteCommentModal" class="edit-modal-overlay" @click.self="showDeleteCommentModal = false">
-      <div class="edit-modal delete-confirm-modal" @click.stop>
-        <h3>Xóa bình luận</h3>
-        <p>Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.</p>
-        <div class="modal-actions">
-          <button @click="showDeleteCommentModal = false" class="btn-cancel">Hủy</button>
-          <button @click="deleteComment" class="btn-delete">Xóa bình luận</button>
+    <teleport to="body">
+      <div v-if="showDeleteCommentModal" class="edit-modal-overlay" @click.self="showDeleteCommentModal = false">
+        <div class="edit-modal delete-confirm-modal" @click.stop>
+          <h3>Xóa bình luận</h3>
+          <p>Bạn có chắc chắn muốn xóa bình luận này? Hành động này không thể hoàn tác.</p>
+          <div class="modal-actions">
+            <button @click="showDeleteCommentModal = false" class="btn-cancel">Hủy</button>
+            <button @click="deleteComment" class="btn-delete">Xóa bình luận</button>
+          </div>
         </div>
       </div>
-    </div>
+    </teleport>
 
     <!-- Comment input box luôn hiển thị dạng sticky footer -->
     <div class="comment-input-box sticky-footer">
@@ -541,34 +545,39 @@ export default {
 
       try {
         const { uploadPostFile, addComment: apiAddComment } = await import('@/api/posts');
-        // Nếu có file, upload file trước
+        
+        let fileUrl = null;
+        
+        // Upload file lên Cloudinary trước nếu có
         if (this.file) {
           const formData = new FormData();
           formData.append("file", this.file);
 
           const uploadResponse = await uploadPostFile(formData);
 
-          if (uploadResponse.status !== 200) {
+          if (uploadResponse.status === 200 && uploadResponse.data.url) {
+            fileUrl = uploadResponse.data.url; // Cloudinary URL
+          } else {
             throw new Error("File upload failed");
           }
         }
 
-        // Thêm comment với text và/hoặc file
+        // Thêm comment với Cloudinary URL
         const postId = String(this.id);
         const response = await apiAddComment(postId, {
           comment: this.commentModel.trim() || undefined,
           userId: this.$store.state.user._id,
           postId: postId,
           displayName: this.user.displayName,
-          file: this.file ? this.file.name : undefined,
-          isTextComment: !this.file,
+          file: fileUrl, // Lưu Cloudinary URL thay vì filename
+          isTextComment: !fileUrl,
         });
 
         if (response.status === 200) {
           const data = response.data;
           // Add to both arrays
-          this.allComments.unshift(data); // Add to beginning of all comments
-          this.comments.unshift(data); // Add to beginning of displayed comments
+          this.allComments.unshift(data);
+          this.comments.unshift(data);
 
           // Emit event to parent to update post commentsCount
           this.$emit('comment-added', {
@@ -1854,12 +1863,12 @@ export default {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.65);
+  background: rgba(0, 0, 0, 0.75);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 10002;
   animation: fadeIn 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   padding: 1rem;
 }

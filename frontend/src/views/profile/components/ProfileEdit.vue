@@ -21,7 +21,7 @@
             />
             <img 
               v-else-if="user.profilePicture"
-              :src="`http://localhost:3000/uploads/user/${user.profilePicture}`" 
+              :src="user.profilePicture || require('@/assets/defaultProfile.png')" 
               class="pe-avatar" 
               alt="Current avatar"
               @error="handleImageError"
@@ -201,89 +201,93 @@ export default {
         return;
       }
 
-      const formData = new FormData();
-      formData.append("file", this.file);
-
       if (!this.displayName || !this.description || !this.birthDate || !this.hobbies) {
         this.fillError = true;
-      } else {
-        this.isLoading = true;
+        return;
+      }
 
-        try {
-          const axios = (await import('@/utils/axios')).default;
+      this.isLoading = true;
+
+      try {
+        const axios = (await import('@/utils/axios')).default;
+        
+        let avatarUrl = null;
+        
+        // Upload ảnh lên Cloudinary trước nếu có file mới
+        if (this.file) {
+          const formData = new FormData();
+          formData.append("file", this.file);
           
-          // Chuẩn bị dữ liệu để cập nhật
-          const updateData = {
-            displayName: this.displayName,
-            description: this.description,
-            birthDate: this.birthDate,
-            hobbies: this.hobbies,
-          };
+          const uploadResponse = await axios.post('/auth/upload', formData, {
+            withCredentials: true,
+            headers: { 'Content-Type': 'multipart/form-data' },
+          });
           
-          // Chỉ thêm profilePicture nếu có file mới
-          if (this.file) {
-            updateData.profilePicture = this.file.name;
-            console.log('Updating with new profile picture:', this.file.name);
-          } else {
-            console.log('No new profile picture, keeping existing avatar');
+          if (uploadResponse.data && uploadResponse.data.url) {
+            avatarUrl = uploadResponse.data.url; // Cloudinary URL
           }
-          
-          const responseUser = await axios.put(`/users/${currentUserId}/edit`, updateData, {
+        }
+        
+        // Chuẩn bị dữ liệu để cập nhật
+        const updateData = {
+          displayName: this.displayName,
+          description: this.description,
+          birthDate: this.birthDate,
+          hobbies: this.hobbies,
+        };
+        
+        // Thêm Cloudinary URL nếu có
+        if (avatarUrl) {
+          updateData.profilePicture = avatarUrl;
+        }
+        
+        const responseUser = await axios.put(`/users/${currentUserId}/edit`, updateData, {
+          withCredentials: true,
+        });
+
+        if (responseUser.status === 200) {
+          const getUser = await axios.get(`/users/${currentUserId}`, {
             withCredentials: true,
           });
 
-          if (responseUser.status === 200) {
-            // Chỉ upload file nếu có file mới
-            if (this.file) {
-              await axios.post('/auth/upload', formData, {
-                withCredentials: true,
-                headers: { 'Content-Type': 'multipart/form-data' },
+          if (getUser.status === 200) {
+            const userData = getUser.data;
+            
+            // Nếu response không có profilePicture nhưng user có ảnh, preserve nó
+            if (!userData.profilePicture && this.user.profilePicture) {
+              userData.profilePicture = this.user.profilePicture;
+            }
+            
+            this.$emit("updateUser", userData);
+            
+            // Cập nhật store với thông tin mới
+            this.$store.commit("SET_USER", userData);
+            
+            // Cập nhật avatar trong store nếu có thay đổi file ảnh
+            if (avatarUrl && userData.profilePicture) {
+              await this.$store.dispatch("updateUserAvatar", {
+                userId: currentUserId,
+                profilePicture: userData.profilePicture
               });
             }
-
-            const getUser = await axios.get(`/users/${currentUserId}`, {
-              withCredentials: true,
-            });
-
-            if (getUser.status === 200) {
-              const userData = getUser.data;
-              
-              // Nếu response không có profilePicture nhưng user có ảnh, preserve nó
-              if (!userData.profilePicture && this.user.profilePicture) {
-                userData.profilePicture = this.user.profilePicture;
-                console.log('Preserved profilePicture:', userData.profilePicture);
+            
+            this.openEditProfile = false;
+            this.editingSuccess = "Your profile was successfully edited!";
+            createToast(
+              {
+                title: this.editingSuccess,
+              },
+              {
+                type: "success",
+                showIcon: true,
               }
-              
-              this.$emit("updateUser", userData);
-              
-              // Cập nhật store với thông tin mới
-              this.$store.commit("SET_USER", userData);
-              
-              // Cập nhật avatar trong store nếu có thay đổi file ảnh
-              if (this.file && userData.profilePicture) {
-                await this.$store.dispatch("updateUserAvatar", {
-                  userId: currentUserId,
-                  profilePicture: userData.profilePicture
-                });
-              }
-              
-              this.openEditProfile = false; // Đóng modal sau khi lưu thành công
-              this.editingSuccess = "Your profile was successfully edited!";
-              createToast(
-                {
-                  title: this.editingSuccess,
-                },
-                {
-                  type: "success",
-                  showIcon: true,
-                }
-              );
-            }
+            );
           }
-        } catch (error) {
-          console.error("Edit profile error:", error);
         }
-
+      } catch (error) {
+        console.error("Edit profile error:", error);
+        this.editingSuccess = "";
+      } finally {
         this.isLoading = false;
       }
     },

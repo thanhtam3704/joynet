@@ -63,9 +63,9 @@
           </button>
         </div>
 
-        <div class="conversations-scroll" v-else>
+        <div class="conversations-scroll" v-else @scroll="handleScroll">
           <div 
-            v-for="conversation in filteredConversations.slice(0, 5)" 
+            v-for="conversation in displayedConversations" 
             :key="conversation._id"
             class="message-item"
             :class="{ 'unread': conversation.unread > 0, 'group-chat': conversation.isGroup }"
@@ -82,7 +82,7 @@
             <div v-else class="message-avatar">
               <img 
                 v-if="getOtherUser(conversation)?.profilePicture" 
-                :src="`http://localhost:3000/uploads/user/${getOtherUser(conversation).profilePicture}`"
+                :src="getOtherUser(conversation).profilePicture"
                 :alt="getOtherUser(conversation).displayName"
               />
               <img 
@@ -164,15 +164,45 @@ export default {
       searchQuery: '',
       loading: false,
       showNewMessageModal: false,
-      showCreateGroupModal: false
+      showCreateGroupModal: false,
+      displayLimit: 10, // Tăng từ 5 lên 10 để hiển thị nhiều hơn
+      displayIncrement: 10, // Tăng thêm 10 mỗi lần scroll
+      contacts: [], // Danh sách người liên hệ
+      contactsLoaded: false
     }
   },
   computed: {
     conversations() {
       return this.$store.getters.sortedConversations || []
     },
+    allItems() {
+      // Kết hợp conversations và contacts
+      const conversationIds = new Set(this.conversations.map(c => {
+        if (c.isGroup) return null;
+        return c.recipientId || c.participant?._id;
+      }).filter(Boolean));
+      
+      // Contacts chưa có conversation
+      const contactsOnly = this.contacts.filter(contact => 
+        !conversationIds.has(contact._id)
+      ).map(contact => ({
+        _id: contact._id,
+        isGroup: false,
+        isContactOnly: true, // Đánh dấu là contact chưa nhắn tin
+        recipientId: contact._id,
+        recipientName: contact.displayName || contact.email,
+        recipientEmail: contact.email,
+        recipientAvatar: contact.profilePicture,
+        recipientIsOnline: contact.isOnline,
+        lastMessage: '',
+        lastMessageTime: null,
+        unread: 0
+      }));
+      
+      return [...this.conversations, ...contactsOnly];
+    },
     filteredConversations() {
-      let result = this.conversations;
+      let result = this.allItems;
       
       // Filter by tab
       if (this.activeTab === 'unread') {
@@ -194,6 +224,12 @@ export default {
       }
       
       return result;
+    },
+    displayedConversations() {
+      return this.filteredConversations.slice(0, this.displayLimit);
+    },
+    hasMoreToShow() {
+      return this.filteredConversations.length > this.displayLimit;
     }
   },
   watch: {
@@ -207,6 +243,38 @@ export default {
   methods: {
     switchTab(tab) {
       this.activeTab = tab;
+      this.displayLimit = 10; // Reset limit khi chuyển tab
+    },
+    
+    async loadContacts() {
+      if (this.contactsLoaded) return;
+      
+      try {
+        // Load friends/followers từ MessageAPI thay vì suggested contacts
+        const MessageAPI = (await import('@/api/messages')).default;
+        const response = await MessageAPI.getFriends(50, 0);
+        
+        if (response.status === 200 && response.data) {
+          this.contacts = response.data.users || [];
+          this.contactsLoaded = true;
+          console.log('✅ Loaded', this.contacts.length, 'friends for MessagesDropdown');
+        }
+      } catch (error) {
+        console.error('❌ Load contacts error:', error);
+      }
+    },
+    
+    handleScroll(event) {
+      const element = event.target;
+      const scrollTop = element.scrollTop;
+      const scrollHeight = element.scrollHeight;
+      const clientHeight = element.clientHeight;
+      
+      // Khi scroll gần đến cuối (còn 50px) và còn conversations để hiển thị
+      if (scrollTop + clientHeight >= scrollHeight - 50 && this.hasMoreToShow) {
+        this.displayLimit += this.displayIncrement;
+        console.log('🔄 Increased display limit to:', this.displayLimit);
+      }
     },
     
     async loadConversations() {
@@ -214,7 +282,10 @@ export default {
       this.loading = true
       try {
         await this.$store.dispatch('loadConversations')
-        console.log('✅ Conversations loaded:', this.conversations);
+        console.log('✅ Conversations loaded:', this.conversations.length);
+        
+        // Load contacts song song
+        await this.loadContacts();
       } catch (error) {
         console.error('❌ Load conversations error:', error)
       } finally {
@@ -226,8 +297,30 @@ export default {
       // Search is handled by computed property
     },
     
-    openConversation(conversationId) {
-      const conversation = this.conversations.find(c => c._id === conversationId)
+    async openConversation(conversationId) {
+      let conversation = this.conversations.find(c => c._id === conversationId)
+      
+      // Nếu là contact chưa có conversation, tạo mới
+      if (!conversation) {
+        const contact = this.allItems.find(item => item._id === conversationId)
+        if (contact && contact.isContactOnly) {
+          try {
+            const MessageAPI = (await import('@/api/messages')).default;
+            const response = await MessageAPI.createOrGetConversation(contact.recipientId);
+            
+            if (response.status === 200) {
+              conversation = {
+                ...response.data,
+                participant: contact
+              };
+            }
+          } catch (error) {
+            console.error('Create conversation error:', error);
+            return;
+          }
+        }
+      }
+      
       if (conversation) {
         // Emit event để mở chat popup
         this.$emit('open-chat', conversation)
@@ -264,8 +357,19 @@ export default {
     },
     
     getOtherUser(conversation) {
+      // Nếu là contact chưa có conversation, tạo object từ các field riêng lẻ
+      if (conversation.isContactOnly) {
+        return {
+          _id: conversation.recipientId,
+          displayName: conversation.recipientName,
+          email: conversation.recipientEmail,
+          profilePicture: conversation.recipientAvatar,
+          isOnline: conversation.recipientIsOnline
+        };
+      }
+      
       // Backend trả về field 'participant' chứ không phải 'otherUser'
-      return conversation.participant || conversation.otherUser || null
+      return conversation.participant || conversation.otherUser || null;
     },
     
     formatTime(timestamp) {

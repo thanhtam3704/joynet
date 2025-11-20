@@ -134,19 +134,29 @@ export default createStore({
     },
     async addPost({ commit, dispatch }, { post, formData = null }) {
       try {
-        // Tạo post trước
-        const postResponse = await postsApi.createPost(post);
-
-        let uploadSuccess = true;
-
-        // Chỉ upload file nếu có formData
+        let fileUrl = null;
+        
+        // Upload file lên Cloudinary trước nếu có
         if (formData) {
           const uploadResponse = await postsApi.uploadPostFile(formData);
-          uploadSuccess = uploadResponse.status === 200;
+          if (uploadResponse.status === 200) {
+            fileUrl = uploadResponse.data.url; // URL từ Cloudinary
+          } else {
+            throw new Error('File upload failed');
+          }
         }
-
-        if (postResponse.status === 200 && uploadSuccess) {
-          // Thay vì ADD_POST với dữ liệu cũ, load lại posts để có dữ liệu đầy đủ
+        
+        // Cập nhật post với Cloudinary URL
+        const postData = {
+          ...post,
+          file: fileUrl // Lưu Cloudinary URL thay vì filename
+        };
+        
+        // Tạo post với URL từ Cloudinary
+        const postResponse = await postsApi.createPost(postData);
+        
+        if (postResponse.status === 200) {
+          // Load lại posts để có dữ liệu đầy đủ
           await dispatch("loadPosts");
           return { success: true, post: postResponse.data };
         }

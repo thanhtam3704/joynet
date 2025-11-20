@@ -29,7 +29,7 @@
           >
             <img 
               v-if="request.fromUser.profilePicture" 
-              :src="`http://localhost:3000/uploads/user/${request.fromUser.profilePicture}`" 
+              :src="request.fromUser.profilePicture" 
               alt="Avatar"
               class="user-avatar"
             />
