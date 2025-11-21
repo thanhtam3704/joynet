@@ -128,15 +128,31 @@ export default {
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         
-        // Multiple free TURN servers for better reliability
-        // Metered TURN servers
+        // Metered.ca TURN servers (most reliable free option)
         {
-          urls: 'turn:openrelay.metered.ca:80',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
+          urls: 'turn:a.relay.metered.ca:80',
+          username: '48b8f6eb4bed0c5b2c0ce671',
+          credential: 'tDGlBPxwoIxRLz5d',
         },
         {
-          urls: 'turn:openrelay.metered.ca:443',
+          urls: 'turn:a.relay.metered.ca:80?transport=tcp',
+          username: '48b8f6eb4bed0c5b2c0ce671',
+          credential: 'tDGlBPxwoIxRLz5d',
+        },
+        {
+          urls: 'turn:a.relay.metered.ca:443',
+          username: '48b8f6eb4bed0c5b2c0ce671',
+          credential: 'tDGlBPxwoIxRLz5d',
+        },
+        {
+          urls: 'turn:a.relay.metered.ca:443?transport=tcp',
+          username: '48b8f6eb4bed0c5b2c0ce671',
+          credential: 'tDGlBPxwoIxRLz5d',
+        },
+        
+        // Backup TURN servers
+        {
+          urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
           credential: 'openrelayproject'
         },
@@ -146,26 +162,11 @@ export default {
           credential: 'openrelayproject'
         },
         
-        // Numb Viagenie TURN server (backup)
+        // Numb Viagenie (backup)
         {
           urls: 'turn:numb.viagenie.ca',
           username: 'webrtc@live.com',
           credential: 'muazkh'
-        },
-        
-        // Twilio STUN (backup)
-        { urls: 'stun:global.stun.twilio.com:3478' },
-        
-        // Alternative TURN servers for better connectivity
-        {
-          urls: 'turn:turn.bistri.com:80',
-          username: 'homeo',
-          credential: 'homeo'
-        },
-        {
-          urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
-          username: 'webrtc',
-          credential: 'webrtc'
         }
       ]
     };
