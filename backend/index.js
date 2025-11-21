@@ -6,8 +6,8 @@ const { Server } = require("socket.io")
 const io = new Server(server, {
   cors: {
     origin: [
-      process.env.FRONTEND_URL || "https://joynet.netlify.app",
-      "https://joynet.netlify.app"
+      process.env.FRONTEND_URL || "https://joynet-frontend.onrender.com",
+      "https://joynet-frontend.onrender.com"
     ],
     credentials: true
   }
@@ -61,8 +61,8 @@ app.use(morgan('common'))
 app.use(cors({ 
   credentials: true, 
   origin: [
-    process.env.FRONTEND_URL || 'https://joynet.netlify.app',
-    'https://joynet.netlify.app'
+    process.env.FRONTEND_URL || 'https://joynet-frontend.onrender.com',
+    'https://joynet-frontend.onrender.com'
   ],
   optionsSuccessStatus: 200
 }))

@@ -264,7 +264,7 @@ router.get("/confirmation/:token", async (req, res) => {
     await user.save();
 
     // Redirect to login page
-    return res.redirect(process.env.FRONTEND_URL || "https://joynet.netlify.app/#/login");
+    return res.redirect(process.env.FRONTEND_URL || "https://joynet-frontend.onrender.com/#/login");
   } catch (err) {
     console.error("Token verification failed:", err);
     return res.status(400).json({
@@ -328,7 +328,7 @@ router.get('/google/callback',
     next();
   },
   passport.authenticate('google', { 
-    failureRedirect: (process.env.FRONTEND_URL || 'https://joynet.netlify.app') + '/#/login?error=google_auth_failed' 
+    failureRedirect: (process.env.FRONTEND_URL || 'https://joynet-frontend.onrender.com') + '/#/login?error=google_auth_failed' 
   }),
   async (req, res) => {
     try {
@@ -336,7 +336,7 @@ router.get('/google/callback',
       
       if (!req.user) {
         console.error('No user found in request after authentication');
-        return res.redirect((process.env.FRONTEND_URL || 'https://joynet.netlify.app') + '/#/login?error=no_user');
+        return res.redirect((process.env.FRONTEND_URL || 'https://joynet-frontend.onrender.com') + '/#/login?error=no_user');
       }
       
       // Tạo JWT token cho user
@@ -348,10 +348,10 @@ router.get('/google/callback',
       
       
       // Redirect về frontend với token - sử dụng hash route
-      const frontendUrl = process.env.FRONTEND_URL || 'https://joynet.netlify.app';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://joynet-frontend.onrender.com';
       res.redirect(`${frontendUrl}/#/login?token=${token}&success=google_login`);
     } catch (error) {
-      const frontendUrl = process.env.FRONTEND_URL || 'https://joynet.netlify.app';
+      const frontendUrl = process.env.FRONTEND_URL || 'https://joynet-frontend.onrender.com';
       res.redirect(`${frontendUrl}/#/login?error=google_auth_failed`);
     }
   }
