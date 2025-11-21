@@ -338,12 +338,19 @@ export default {
         console.log(`👤 [${role}] Current remotePeers count:`, this.remotePeers.length);
         console.log(`👤 [${role}] Current user ID:`, this.$store.state.user?._id);
         
-        // Determine who should initiate based on user ID comparison
-        // The user with smaller ID (lexicographically) initiates
+        // Skip if it's our own join event
         const currentUserId = this.$store.state.user?._id;
-        const shouldInitiate = currentUserId < userId;
+        if (userId === currentUserId) {
+          console.log(`👤 [${role}] Skipping own join event`);
+          return;
+        }
+        
+        // Determine who should initiate based on user ID comparison
+        // The user with LARGER ID (lexicographically) initiates to avoid both waiting
+        const shouldInitiate = currentUserId > userId;
         
         console.log(`👤 [${role}] Should I initiate with ${userId}? ${shouldInitiate}`);
+        console.log(`👤 [${role}] Comparison: ${currentUserId} > ${userId} = ${shouldInitiate}`);
         await this.createPeerConnection(userId, userName, shouldInitiate);
       });
 

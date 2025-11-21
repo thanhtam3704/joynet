@@ -6,8 +6,7 @@ const { Server } = require("socket.io")
 const io = new Server(server, {
   cors: {
     origin: [
-      process.env.FRONTEND_URL || "https://joynet-frontend.onrender.com",
-      "https://joynet-frontend.onrender.com"
+      process.env.FRONTEND_URL || "https://joynet-frontend.onrender.com"
     ],
     credentials: true
   }
