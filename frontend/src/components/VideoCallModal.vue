@@ -128,41 +128,37 @@ export default {
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         
-        // Metered.ca TURN servers (most reliable free option)
+        // Metered STUN - YOUR APP
+        { urls: 'stun:stun.relay.metered.ca:80' },
+        
+        // YOUR METERED.CA TURN SERVERS - PRIMARY (50GB/month free!)
         {
-          urls: 'turn:a.relay.metered.ca:80',
-          username: '48b8f6eb4bed0c5b2c0ce671',
-          credential: 'tDGlBPxwoIxRLz5d',
+          urls: 'turn:global.relay.metered.ca:80',
+          username: 'e3cae3bf8fa76d84d333b141',
+          credential: 'unVrN1lrG/fI66DN',
         },
         {
-          urls: 'turn:a.relay.metered.ca:80?transport=tcp',
-          username: '48b8f6eb4bed0c5b2c0ce671',
-          credential: 'tDGlBPxwoIxRLz5d',
+          urls: 'turn:global.relay.metered.ca:80?transport=tcp',
+          username: 'e3cae3bf8fa76d84d333b141',
+          credential: 'unVrN1lrG/fI66DN',
         },
         {
-          urls: 'turn:a.relay.metered.ca:443',
-          username: '48b8f6eb4bed0c5b2c0ce671',
-          credential: 'tDGlBPxwoIxRLz5d',
+          urls: 'turn:global.relay.metered.ca:443',
+          username: 'e3cae3bf8fa76d84d333b141',
+          credential: 'unVrN1lrG/fI66DN',
         },
         {
-          urls: 'turn:a.relay.metered.ca:443?transport=tcp',
-          username: '48b8f6eb4bed0c5b2c0ce671',
-          credential: 'tDGlBPxwoIxRLz5d',
+          urls: 'turns:global.relay.metered.ca:443?transport=tcp',
+          username: 'e3cae3bf8fa76d84d333b141',
+          credential: 'unVrN1lrG/fI66DN',
         },
         
-        // Backup TURN servers
+        // BACKUP - Public TURN servers
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
           credential: 'openrelayproject'
         },
-        {
-          urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-          username: 'openrelayproject',
-          credential: 'openrelayproject'
-        },
-        
-        // Numb Viagenie (backup)
         {
           urls: 'turn:numb.viagenie.ca',
           username: 'webrtc@live.com',
@@ -434,9 +430,15 @@ export default {
       
       const pc = new RTCPeerConnection({ 
         iceServers: this.iceServers,
-        iceTransportPolicy: 'all', // Try all: relay, srflx, host
+        iceTransportPolicy: 'relay', // FORCE TURN relay only (test mode)
         bundlePolicy: 'max-bundle',
         rtcpMuxPolicy: 'require'
+      });
+      
+      console.log(`🔧 [${role}] RTCPeerConnection config:`, {
+        iceServersCount: this.iceServers.length,
+        iceTransportPolicy: 'relay',
+        firstTurnServer: this.iceServers.find(s => s.urls && (Array.isArray(s.urls) ? s.urls[0].includes('turn:') : s.urls.includes('turn:')))
       });
       this.peerConnections.set(userId, pc);
 
