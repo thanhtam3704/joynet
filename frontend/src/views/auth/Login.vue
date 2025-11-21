@@ -121,7 +121,7 @@ export default {
       try {
         // Sử dụng redirect flow thay vì popup/credential
         const clientId = '749220537519-beauagaft0dmdc9uf2ije8fo0mrdc9jd.apps.googleusercontent.com';
-        const redirectUri = 'http://localhost:3000/api/auth/google/callback';
+        const redirectUri = 'https://social-backend-tfha.onrender.com/api/auth/google/callback';
         const scope = 'openid email profile';
         
         // Tạo Google OAuth URL

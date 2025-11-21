@@ -141,7 +141,7 @@ export default {
         
         // Sử dụng redirect flow như Login (vì đăng ký và đăng nhập Google về bản chất là giống nhau)
         const clientId = '749220537519-beauagaft0dmdc9uf2ije8fo0mrdc9jd.apps.googleusercontent.com';
-        const redirectUri = 'http://localhost:3000/api/auth/google/callback';
+        const redirectUri = 'https://social-backend-tfha.onrender.com/api/auth/google/callback';
         const scope = 'openid email profile';
         
         // Tạo nonce để bảo vệ CSRF
