@@ -414,30 +414,74 @@ export default {
         pc.addTrack(track, this.localStream);
       });
 
-      // Handle remote stream
+      // Handle remote stream with detailed logging
       pc.ontrack = (event) => {
-        console.log('Received remote track from:', userId);
+        console.log(`🎬 [${role}] Received remote track from ${userId}:`, {
+          kind: event.track.kind,
+          enabled: event.track.enabled,
+          muted: event.track.muted,
+          readyState: event.track.readyState,
+          streams: event.streams.length
+        });
+        
         const peer = this.remotePeers.find(p => p.userId === userId);
         if (peer) {
           peer.stream = event.streams[0];
+          console.log(`✅ [${role}] Set stream for peer ${userId}`);
+          
           this.$nextTick(() => {
             const videoElement = this.$refs[`remoteVideo-${userId}`];
             if (videoElement && videoElement[0]) {
               videoElement[0].srcObject = event.streams[0];
+              console.log(`✅ [${role}] Remote video element updated for ${userId}`);
+              
+              // Log when video starts playing
+              videoElement[0].onloadedmetadata = () => {
+                console.log(`📺 [${role}] Remote video metadata loaded for ${userId}`);
+              };
+              videoElement[0].onplay = () => {
+                console.log(`▶️ [${role}] Remote video playing for ${userId}`);
+              };
+            } else {
+              console.error(`❌ [${role}] Video element not found for ${userId}`);
             }
           });
+        } else {
+          console.error(`❌ [${role}] Peer not found in remotePeers: ${userId}`);
         }
       };
 
-      // Handle ICE candidates
+      // Handle ICE candidates with detailed logging
       pc.onicecandidate = (event) => {
         if (event.candidate) {
+          console.log(`🧊 [${role}] ICE candidate for ${userId}:`, {
+            type: event.candidate.type,
+            protocol: event.candidate.protocol,
+            address: event.candidate.address,
+            port: event.candidate.port,
+            relatedAddress: event.candidate.relatedAddress
+          });
           socketService.emit('video-call:ice-candidate', {
             to: userId,
             candidate: event.candidate,
             conversationId: this.conversationId
           });
+        } else {
+          console.log(`🧊 [${role}] ICE gathering complete for ${userId}`);
         }
+      };
+      
+      // Monitor connection state
+      pc.onconnectionstatechange = () => {
+        console.log(`🔌 [${role}] Connection state for ${userId}:`, pc.connectionState);
+        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
+          console.error(`❌ [${role}] Connection ${pc.connectionState} for ${userId}`);
+        }
+      };
+      
+      // Monitor ICE connection state
+      pc.oniceconnectionstatechange = () => {
+        console.log(`❄️ [${role}] ICE connection state for ${userId}:`, pc.iceConnectionState);
       };
 
       // Add to remote peers
