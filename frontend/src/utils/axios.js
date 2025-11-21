@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const instance = axios.create({
-  baseURL: process.env.VUE_APP_API_URL || 'http://localhost:3000/api',
+  baseURL: process.env.VUE_APP_API_URL || 'https://social-backend-tfha.onrender.com/api',
   timeout: 10000,
   headers: {
     'Content-Type': 'application/json',
