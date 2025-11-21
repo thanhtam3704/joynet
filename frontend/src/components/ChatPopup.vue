@@ -1323,7 +1323,8 @@ export default {
       // Local file - use backend endpoint
       const token = localStorage.getItem('token');
       const filename = message.file;
-      const downloadUrl = `http://localhost:3000/api/messages/download/${filename}`;
+      const apiUrl = process.env.VUE_APP_API_URL || 'https://social-backend-tfha.onrender.com/api';
+      const downloadUrl = `${apiUrl}/messages/download/${filename}`;
       
       // Add auth header via fetch and blob
       fetch(downloadUrl, {

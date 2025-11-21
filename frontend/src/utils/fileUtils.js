@@ -11,8 +11,9 @@ export const getFileUrl = (filePath) => {
     return filePath;
   }
   
-  // Nếu là local file, thêm localhost prefix
-  return `http://localhost:3000/uploads/${filePath}`;
+  // Nếu là local file, thêm backend URL
+  const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+  return `${apiUrl}/uploads/${filePath}`;
 };
 
 export const getAvatarUrl = (avatarPath) => {
@@ -24,7 +25,8 @@ export const getAvatarUrl = (avatarPath) => {
   }
   
   // Nếu là local file
-  return `http://localhost:3000/uploads/user/${avatarPath}`;
+  const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+  return `${apiUrl}/uploads/user/${avatarPath}`;
 };
 
 export const getPostImageUrl = (imagePath) => {
@@ -36,7 +38,8 @@ export const getPostImageUrl = (imagePath) => {
   }
   
   // Nếu là local file
-  return `http://localhost:3000/uploads/${imagePath}`;
+  const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+  return `${apiUrl}/uploads/${imagePath}`;
 };
 
 // Upload file lên Cloudinary qua backend
@@ -44,7 +47,8 @@ export const uploadFile = async (file, endpoint = '/posts/upload') => {
   const formData = new FormData();
   formData.append('file', file);
   
-  const response = await fetch(`http://localhost:3000/api${endpoint}`, {
+  const apiUrl = process.env.VUE_APP_API_URL || 'https://social-backend-tfha.onrender.com/api';
+  const response = await fetch(`${apiUrl}${endpoint}`, {
     method: 'POST',
     headers: {
       'token': localStorage.getItem('token')

@@ -73,7 +73,8 @@ router.post("/register", async (req, res) => {
       }
     );
 
-    const url = `http://localhost:3000/api/auth/confirmation/${emailToken}`;
+    const backendUrl = process.env.BACKEND_URL || 'https://social-backend-tfha.onrender.com';
+    const url = `${backendUrl}/api/auth/confirmation/${emailToken}`;
 
     // Try to send email first
     try {

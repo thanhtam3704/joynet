@@ -12,8 +12,9 @@ export default {
         return filePath;
       }
       
-      // Nếu là local file, thêm localhost prefix
-      return `http://localhost:3000/uploads/${filePath}`;
+      // Nếu là local file, thêm backend URL
+      const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+      return `${apiUrl}/uploads/${filePath}`;
     },
     
     getAvatarUrl(avatarPath) {
@@ -25,7 +26,8 @@ export default {
       }
       
       // Nếu là local file
-      return `http://localhost:3000/uploads/user/${avatarPath}`;
+      const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+      return `${apiUrl}/uploads/user/${avatarPath}`;
     },
     
     getPostImageUrl(imagePath) {
@@ -37,7 +39,8 @@ export default {
       }
       
       // Nếu là local file
-      return `http://localhost:3000/uploads/${imagePath}`;
+      const apiUrl = process.env.VUE_APP_API_URL?.replace('/api', '') || 'https://social-backend-tfha.onrender.com';
+      return `${apiUrl}/uploads/${imagePath}`;
     }
   }
 };

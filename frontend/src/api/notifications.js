@@ -63,7 +63,8 @@ export const createNotification = async (notificationData) => {
 // Lấy thông báo realtime (WebSocket hoặc Server-Sent Events)
 export const subscribeToNotifications = (userId, callback) => {
   // Implement WebSocket connection for real-time notifications
-  const ws = new WebSocket(`ws://localhost:3000/notifications/${userId}`);
+  const wsUrl = process.env.VUE_APP_SOCKET_URL?.replace('https://', 'wss://').replace('http://', 'ws://') || 'wss://social-backend-tfha.onrender.com';
+  const ws = new WebSocket(`${wsUrl}/notifications/${userId}`);
   
   ws.onmessage = (event) => {
     const notification = JSON.parse(event.data);

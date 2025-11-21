@@ -300,7 +300,8 @@ export default {
 
       try {
         // You'll need to implement this API call
-        const response = await fetch('http://localhost:3000/api/posts/upload', {
+        const apiUrl = process.env.VUE_APP_API_URL || 'https://social-backend-tfha.onrender.com/api';
+        const response = await fetch(`${apiUrl}/posts/upload`, {
           method: 'POST',
           body: formData
         });
