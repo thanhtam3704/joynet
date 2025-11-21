@@ -5,7 +5,7 @@ const server = http.createServer(app)
 const { Server } = require("socket.io")
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:8080",
+    origin: process.env.FRONTEND_URL || "http://localhost:8080",
     credentials: true
   }
 })
@@ -57,7 +57,7 @@ app.use(helmet({
 app.use(morgan('common'))
 app.use(cors({ 
   credentials: true, 
-  origin: 'http://localhost:8080',
+  origin: process.env.FRONTEND_URL || 'http://localhost:8080',
   optionsSuccessStatus: 200
 }))
 // app.use(fileupload()) // Không cần nữa - dùng Cloudinary
@@ -85,6 +85,7 @@ app.use('/api/follow-requests', followRequestRoute)
 // WebSocket Authentication & Events
 require('./socket/socketHandler')(io)
 
-server.listen(3000, () => {
-  console.log('backend server is running!')
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`backend server is running on port ${PORT}!`)
 })
