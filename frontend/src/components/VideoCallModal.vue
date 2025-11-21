@@ -124,10 +124,12 @@ export default {
       durationInterval: null,
       isCaller: false, // Track if this user is the caller
       iceServers: [
+        // Google STUN servers
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
-        // Free TURN server for NAT traversal
+        
+        // Multiple free TURN servers for better reliability
+        // Metered TURN servers
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
@@ -142,6 +144,28 @@ export default {
           urls: 'turn:openrelay.metered.ca:443?transport=tcp',
           username: 'openrelayproject',
           credential: 'openrelayproject'
+        },
+        
+        // Numb Viagenie TURN server (backup)
+        {
+          urls: 'turn:numb.viagenie.ca',
+          username: 'webrtc@live.com',
+          credential: 'muazkh'
+        },
+        
+        // Twilio STUN (backup)
+        { urls: 'stun:global.stun.twilio.com:3478' },
+        
+        // Alternative TURN servers for better connectivity
+        {
+          urls: 'turn:turn.bistri.com:80',
+          username: 'homeo',
+          credential: 'homeo'
+        },
+        {
+          urls: 'turn:turn.anyfirewall.com:443?transport=tcp',
+          username: 'webrtc',
+          credential: 'webrtc'
         }
       ]
     };
@@ -400,7 +424,12 @@ export default {
         return;
       }
       
-      const pc = new RTCPeerConnection({ iceServers: this.iceServers });
+      const pc = new RTCPeerConnection({ 
+        iceServers: this.iceServers,
+        iceTransportPolicy: 'all', // Try all: relay, srflx, host
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+      });
       this.peerConnections.set(userId, pc);
 
       // Add local tracks
@@ -471,11 +500,15 @@ export default {
         }
       };
       
-      // Monitor connection state
+      // Monitor connection state with auto-restart on failure
       pc.onconnectionstatechange = () => {
         console.log(`🔌 [${role}] Connection state for ${userId}:`, pc.connectionState);
-        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
-          console.error(`❌ [${role}] Connection ${pc.connectionState} for ${userId}`);
+        if (pc.connectionState === 'failed') {
+          console.error(`❌ [${role}] Connection failed for ${userId}, attempting to restart ICE`);
+          // Try to restart ICE connection (force TURN usage)
+          pc.restartIce();
+        } else if (pc.connectionState === 'disconnected') {
+          console.warn(`⚠️ [${role}] Connection disconnected for ${userId}`);
         }
       };
       
