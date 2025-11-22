@@ -940,9 +940,21 @@ export default {
       // Add message to current conversation if it matches
       if (receivedConversationId === this.activeConversationId) {
         // Kiểm tra xem tin nhắn có phải từ người khác không
-        const messageSenderId = String(messageData.sender?._id || messageData.senderId);
+        // ✅ Fix: messageData.sender có thể là STRING (ID) hoặc OBJECT
+        let messageSenderId;
+        if (typeof messageData.sender === 'string') {
+          // sender là string ID
+          messageSenderId = messageData.sender;
+        } else if (typeof messageData.sender === 'object' && messageData.sender?._id) {
+          // sender là object đã populate
+          messageSenderId = messageData.sender._id;
+        } else {
+          // Fallback về senderId
+          messageSenderId = messageData.senderId;
+        }
+        
         const myUserId = String(this.currentUserId);
-        const isFromOtherUser = messageSenderId !== myUserId;
+        const isFromOtherUser = String(messageSenderId) !== myUserId;
         
         console.log('📨 Checking message:', {
           messageSenderId,
@@ -977,7 +989,25 @@ export default {
           }
           
           // ✅ Populate sender info từ messageData.sender (backend đã populate)
-          const sender = messageData.sender || {};
+          // ✅ Fix: Xử lý cả trường hợp sender là STRING hoặc OBJECT
+          let sender = {};
+          if (typeof messageData.sender === 'object' && messageData.sender) {
+            // sender đã được populate thành object
+            sender = messageData.sender;
+          } else if (typeof messageData.sender === 'string') {
+            // sender chỉ là ID string → lấy info từ conversation participant
+            const conversation = this.conversations.find(c => c._id === receivedConversationId);
+            if (conversation && conversation.participant) {
+              sender = {
+                _id: messageData.sender,
+                displayName: conversation.participant.displayName,
+                profilePicture: conversation.participant.profilePicture
+              };
+            } else {
+              sender = { _id: messageData.sender };
+            }
+          }
+          
           console.log('📨 Sender info extracted:', {
             senderId: sender._id,
             displayName: sender.displayName,
