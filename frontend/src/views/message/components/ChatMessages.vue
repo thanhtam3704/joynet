@@ -252,6 +252,16 @@ export default {
         return message.senderAvatar;
       }
       
+      // ✅ FALLBACK: Lấy avatar từ conversation participant (cho tin nhắn vừa nhận qua socket)
+      // Nếu message không phải của mình và không có avatar
+      const isMyMessage = message.senderId === this.$store.state.user?._id;
+      if (!isMyMessage) {
+        const conversation = this.$parent?.currentConversation || this.$parent?.selectedConversation;
+        if (conversation && conversation.participant && conversation.participant.profilePicture) {
+          return conversation.participant.profilePicture;
+        }
+      }
+      
       return null;
     },
     
