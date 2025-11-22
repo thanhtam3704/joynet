@@ -33,13 +33,6 @@
 - **Hệ Thống Theo Dõi** - Gửi và quản lý yêu cầu theo dõi
 - **Kiểm Soát Quyền Riêng Tư** - Quản lý ai có thể xem nội dung của bạn
 
-### 🎨 Trải Nghiệm Người Dùng
-- **Thiết Kế Responsive** - Thiết kế mobile-first hoạt động trên mọi thiết bị
-- **Chế Độ Tối/Sáng** - (Sắp ra mắt)
-- **Cuộn Vô Hạn** - Tải nội dung mượt mà
-- **Chọn Emoji** - Hỗ trợ emoji phong phú cho bài đăng và tin nhắn
-- **Xem Trước Hình Ảnh** - Trình xem ảnh kích thước đầy đủ
-
 ---
 
 ## 🛠️ Công Nghệ
@@ -160,10 +153,6 @@ Mở trình duyệt và truy cập `http://localhost:8080`
 - Frontend: https://joynet-frontend.onrender.com
 - Backend API: https://social-backend-tfha.onrender.com
 
-### Triển Khai Bản Sao Của Bạn
-
-Hướng dẫn triển khai chi tiết trong [RENDER_NETLIFY_GUIDE.md](RENDER_NETLIFY_GUIDE.md)
-
 **Các Bước Nhanh:**
 
 1. **Triển Khai Backend lên Render**
@@ -185,127 +174,24 @@ Hướng dẫn triển khai chi tiết trong [RENDER_NETLIFY_GUIDE.md](RENDER_NE
    - Metered.ca TURN servers
 
 ---
-
-## 🎯 API Endpoints
-
-### Xác Thực
-```
-POST   /api/auth/signup              - Tạo tài khoản mới
-POST   /api/auth/login               - Đăng nhập với thông tin xác thực
-GET    /api/auth/google              - Đăng nhập Google OAuth
-POST   /api/auth/logout              - Đăng xuất người dùng
-POST   /api/auth/forgot-password     - Yêu cầu đặt lại mật khẩu
-POST   /api/auth/reset-password      - Đặt lại mật khẩu với token
-GET    /api/auth/confirm-email       - Xác nhận địa chỉ email
-```
-
-### Người Dùng
-```
-GET    /api/users/profile            - Lấy hồ sơ người dùng hiện tại
-PUT    /api/users/profile            - Cập nhật hồ sơ
-GET    /api/users/:userId            - Lấy người dùng theo ID
-POST   /api/users/avatar             - Tải lên ảnh đại diện
-GET    /api/users/search             - Tìm kiếm người dùng
-GET    /api/users/suggestions        - Lấy gợi ý theo dõi
-```
-
-### Bài Đăng
-```
-GET    /api/posts                    - Lấy bài đăng timeline
-GET    /api/posts/:postId            - Lấy bài đăng theo ID
-POST   /api/posts                    - Tạo bài đăng mới
-PUT    /api/posts/:postId            - Cập nhật bài đăng
-DELETE /api/posts/:postId            - Xóa bài đăng
-POST   /api/posts/:postId/like       - Thích/bỏ thích bài đăng
-POST   /api/posts/:postId/comment    - Thêm bình luận
-POST   /api/posts/:postId/react      - Thả cảm xúc vào bài đăng
-```
-
-### Tin Nhắn
-```
-GET    /api/messages/conversations   - Lấy cuộc trò chuyện của người dùng
-GET    /api/messages/:conversationId - Lấy tin nhắn trong cuộc trò chuyện
-POST   /api/messages                 - Gửi tin nhắn mới
-POST   /api/messages/group           - Tạo cuộc trò chuyện nhóm
-PUT    /api/messages/:messageId      - Chỉnh sửa tin nhắn
-DELETE /api/messages/:messageId      - Xóa tin nhắn
-POST   /api/messages/:messageId/react - Thả cảm xúc vào tin nhắn
-```
-
-### Thông Báo
-```
-GET    /api/notifications            - Lấy thông báo người dùng
-PUT    /api/notifications/read       - Đánh dấu thông báo đã đọc
-DELETE /api/notifications/:id        - Xóa thông báo
-```
-
-### Hệ Thống Theo Dõi
-```
-GET    /api/follow-requests          - Lấy yêu cầu theo dõi
-POST   /api/follow-requests/:userId  - Gửi yêu cầu theo dõi
-PUT    /api/follow-requests/:id      - Chấp nhận yêu cầu theo dõi
-DELETE /api/follow-requests/:id      - Từ chối yêu cầu theo dõi
-```
-
----
-
-## 🔌 Sự Kiện Socket.IO
-
-### Kết Nối
-```javascript
-socket.on('connect')                    // Người dùng kết nối
-socket.on('disconnect')                 // Người dùng ngắt kết nối
-socket.on('user:online')                // Người dùng trực tuyến
-socket.on('user:offline')               // Người dùng ngoại tuyến
-```
-
-### Nhắn Tin
-```javascript
-socket.on('newMessage')                 // Nhận tin nhắn mới
-socket.on('messagesRead')               // Tin nhắn được đánh dấu đã đọc
-socket.on('user:typing')                // Người dùng đang nhập
-socket.on('user:stopTyping')            // Người dùng dừng nhập
-socket.on('messageReactionUpdated')     // Cập nhật cảm xúc tin nhắn
-```
-
-### Gọi Video
-```javascript
-socket.on('video-call:incoming')        // Cuộc gọi video đến
-socket.on('video-call:accepted')        // Cuộc gọi được chấp nhận
-socket.on('video-call:rejected')        // Cuộc gọi bị từ chối
-socket.on('video-call:cancelled')       // Cuộc gọi bị hủy
-socket.on('video-call:ended')           // Cuộc gọi kết thúc
-socket.on('video-call:user-joined')     // Người dùng tham gia cuộc gọi
-socket.on('video-call:user-left')       // Người dùng rời cuộc gọi
-socket.on('video-call:offer')           // WebRTC offer
-socket.on('video-call:answer')          // WebRTC answer
-socket.on('video-call:ice-candidate')   // ICE candidate
-```
-
-### Thông Báo
-```javascript
-socket.on('newNotification')            // Nhận thông báo mới
-socket.on('postReactionUpdated')        // Cập nhật cảm xúc bài đăng
-```
-
----
-
 ## 🎨 Ảnh Chụp Màn Hình
 
 ### Trang Chủ
 <img width="1907" height="915" alt="image" src="https://github.com/user-attachments/assets/142f5193-d291-47fc-83dd-283ec0131dc2" />
 
 ### Trang Cá Nhân
-*Hồ sơ người dùng có thể tùy chỉnh với thư viện bài đăng*
+<img width="1917" height="906" alt="image" src="https://github.com/user-attachments/assets/4c541237-11e6-47ea-af3f-fe77ca67f933" />
 
 ### Nhắn Tin
-*Chat thời gian thực với cảm xúc emoji và chia sẻ tệp tin*
+<img width="1917" height="912" alt="image" src="https://github.com/user-attachments/assets/6bb3b037-969c-4b21-b456-4c50d7a93434" />
+
+<img width="406" height="560" alt="image" src="https://github.com/user-attachments/assets/96853900-9b67-408b-98f3-de2cfe0f8aad" />
 
 ### Gọi Video
-*Cuộc gọi video chất lượng cao với nhiều người tham gia*
+<img width="1913" height="908" alt="image" src="https://github.com/user-attachments/assets/575ddcc3-ca9c-4d74-9864-de04934f44b2" />
 
 ### Thông Báo
-*Luôn cập nhật với thông báo thời gian thực*
+<img width="1918" height="911" alt="image" src="https://github.com/user-attachments/assets/9f26fe2d-2d17-4378-b088-83143636e158" />
 
 ---
 
@@ -344,9 +230,6 @@ socket.on('postReactionUpdated')        // Cập nhật cảm xúc bài đăng
 - [ ] Tích hợp CDN
 
 ---
-
-
-
 
 
 
