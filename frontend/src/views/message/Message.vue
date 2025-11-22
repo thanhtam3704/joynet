@@ -1029,9 +1029,16 @@ export default {
           });
           
           // ✅ Chuẩn hóa format và giữ lại sender object để ChatMessages có thể dùng
+          // ✅ Fix: Với CALL_ENDED message, nếu là tin nhắn của mình thì dùng currentUserId làm senderId
+          let finalSenderId = sender._id || messageData.senderId;
+          if (isCallEndMessage && !shouldDisplayAsIncoming) {
+            // Tin nhắn "Cuộc gọi kết thúc" của mình → dùng currentUserId
+            finalSenderId = this.currentUserId;
+          }
+          
           const messageWithFlag = {
             _id: messageData._id,
-            senderId: sender._id || messageData.senderId,
+            senderId: finalSenderId,
             senderName: sender.displayName || messageData.senderName || '',
             senderAvatar: sender.profilePicture || messageData.senderAvatar || null,
             sender: sender, // ✅ Giữ lại sender object để ChatMessages.vue có thể dùng sender.profilePicture
