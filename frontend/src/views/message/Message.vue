@@ -953,9 +953,9 @@ export default {
         
         // Kiểm tra nếu là tin nhắn cuộc gọi (luôn hiển thị)
         const content = messageData.content || '';
-        const isMissedCallMessage = content.includes('📞 Đã bỏ lỡ') || content.includes('📞 Cuộc gọi đã bị bỏ lỡ') || content.includes('📞 Cuộc gọi nhóm đã bị bỏ lỡ');
-        const isCancelledCallMessage = content.includes('📞 Bạn đã hủy cuộc gọi') || content.includes('📞 đã gọi cho bạn');
-        const isCallEndMessage = content.includes('🎥📞 Cuộc gọi video kết thúc') || content.includes('🎥📞 Cuộc gọi nhóm kết thúc');
+        const isMissedCallMessage = content.includes('📞 Đã bỏ lỡ') || content.includes('📞 Cuộc gọi đã bị bỏ lỡ') || content.includes('📞 Cuộc gọi nhóm đã bị bỏ lỡ') || content.includes('CALL_MISSED');
+        const isCancelledCallMessage = content.includes('📞 Bạn đã hủy cuộc gọi') || content.includes('📞 đã gọi cho bạn') || content.includes('CALL_CANCELLED');
+        const isCallEndMessage = content.includes('🎥📞 Cuộc gọi video kết thúc') || content.includes('🎥📞 Cuộc gọi nhóm kết thúc') || content.includes('CALL_ENDED');
         const isCallMessage = isMissedCallMessage || isCancelledCallMessage || isCallEndMessage;
         
         console.log('📨 isCallMessage:', isCallMessage, { isMissedCallMessage, isCancelledCallMessage, isCallEndMessage });
